@@ -220,7 +220,12 @@ def test_a_failure_inside_the_transaction_leaves_no_reservation() -> None:
         raise RuntimeError("business logic blew up")
 
     with pytest.raises(RuntimeError):
-        execute_once(key=key, request=request, status_code=201, work=exploding_work)
+        execute_once(
+            key=key,
+            fingerprint=request.fingerprint(),
+            status_code=201,
+            work=exploding_work,
+        )
 
     with db.transaction(read_only=True) as cur:
         cur.execute("SELECT count(*) AS n FROM idempotency_keys WHERE key = %s", (key,))

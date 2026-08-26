@@ -126,12 +126,22 @@ class TransactionResponse(Strict):
 # ------------------------------------------------------------------- holds ---
 
 
-class CreateHoldRequest(Strict):
+class CreateHoldRequest(IdempotentRequest):
     account_id: UUID
     amount_minor: PositiveAmountMinor
     currency: CurrencyCode
     expires_in_seconds: int = Field(default=3600, ge=1, le=30 * 24 * 3600)
     description: str = Field(default="hold", min_length=1, max_length=500)
+
+    def fingerprint(self) -> dict[str, Any]:
+        return {
+            "op": "create_hold",
+            "account_id": str(self.account_id),
+            "amount_minor": self.amount_minor,
+            "currency": self.currency,
+            "expires_in_seconds": self.expires_in_seconds,
+            "description": self.description,
+        }
 
 
 class HoldResponse(Strict):
@@ -142,19 +152,46 @@ class HoldResponse(Strict):
     status: str
     expires_at: datetime
     captured_transaction_id: UUID | None
+    # Derived from the capture transaction's entries rather than stored, for the
+    # same reason balances are. Null until the hold is captured.
     captured_amount_minor: int | None
+    # amount_minor - captured_amount_minor: the part of the authorization that
+    # was released rather than taken.
+    released_amount_minor: int | None
     created_at: datetime
     replayed: bool = False
 
 
-class CaptureHoldRequest(Strict):
-    # Omit to capture the full held amount.
+class CaptureCredit(Strict):
+    account_id: UUID
+    amount_minor: PositiveAmountMinor
+
+
+class CaptureHoldRequest(IdempotentRequest):
+    # Omit to capture the full authorized amount.
     amount_minor: PositiveAmountMinor | None = None
+    # Where the captured money goes. Must sum to `amount_minor`. A list rather
+    # than a single account so a marketplace capture can split between the
+    # merchant and platform revenue in one transaction.
+    credits: list[CaptureCredit] = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)
 
+    def fingerprint(self) -> dict[str, Any]:
+        return {
+            "op": "capture_hold",
+            "amount_minor": self.amount_minor,
+            "credits": sorted(
+                [str(c.account_id), c.amount_minor] for c in self.credits
+            ),
+            "description": self.description,
+        }
 
-class VoidHoldRequest(Strict):
+
+class VoidHoldRequest(IdempotentRequest):
     reason: str | None = Field(default=None, max_length=500)
+
+    def fingerprint(self) -> dict[str, Any]:
+        return {"op": "void_hold", "reason": self.reason}
 
 
 # ---------------------------------------------------------------- balances ---

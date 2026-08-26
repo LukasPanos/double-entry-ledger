@@ -20,6 +20,7 @@ from ledger.services.posting import (
     Posting,
     append_transaction,
     assert_currencies_match,
+    assert_no_overdraft,
     lock_accounts,
     validate_postings,
 )
@@ -44,8 +45,12 @@ def post_transaction(
     validate_postings(postings)
 
     def work(cur: Cursor) -> dict[str, Any]:
+        # Lock, then check, then write -- all inside one transaction. The lock is
+        # what makes the check meaningful: without it, two concurrent debits
+        # could both read a sufficient available balance and both commit.
         accounts = lock_accounts(cur, [p.account_id for p in postings])
         assert_currencies_match(postings, accounts)
+        assert_no_overdraft(cur, postings, accounts)
         tx = append_transaction(
             cur,
             description=request.description,
@@ -59,7 +64,7 @@ def post_transaction(
 
     return execute_once(
         key=idempotency_key,
-        request=request,
+        fingerprint=request.fingerprint(),
         status_code=201,
         work=work,
         isolation=READ_COMMITTED,

@@ -99,6 +99,82 @@ def fund(account_id: UUID, amount_minor: int, currency: str = "USD") -> dict[str
     )
 
 
+def make_hold(
+    account_id: UUID,
+    amount_minor: int,
+    *,
+    currency: str = "USD",
+    expires_in_seconds: int = 3600,
+    key: UUID | None = None,
+):
+    from ledger.schemas import CreateHoldRequest
+    from ledger.services import holds as holds_service
+
+    return holds_service.create_hold(
+        CreateHoldRequest(
+            account_id=account_id,
+            amount_minor=amount_minor,
+            currency=currency,
+            expires_in_seconds=expires_in_seconds,
+        ),
+        key or uuid4(),
+    )
+
+
+def capture(
+    hold_id: UUID,
+    credits: list[tuple[UUID, int]],
+    *,
+    amount_minor: int | None = None,
+    key: UUID | None = None,
+):
+    from ledger.schemas import CaptureHoldRequest
+    from ledger.services import holds as holds_service
+
+    return holds_service.capture_hold(
+        hold_id,
+        CaptureHoldRequest(
+            amount_minor=amount_minor,
+            credits=[
+                {"account_id": a, "amount_minor": m} for a, m in credits
+            ],
+        ),
+        key or uuid4(),
+    )
+
+
+def void(hold_id: UUID, *, key: UUID | None = None):
+    from ledger.schemas import VoidHoldRequest
+    from ledger.services import holds as holds_service
+
+    return holds_service.void_hold(hold_id, VoidHoldRequest(), key or uuid4())
+
+
+def balance(account_id: UUID) -> dict[str, Any]:
+    return accounts_service.get_balance(account_id)
+
+
+def expire_hold_now(hold_id: UUID) -> None:
+    """Rewind a hold's deadline into the past.
+
+    `expires_at` is immutable through the service and the state-machine trigger
+    forbids changing it -- which is the point. Tests need to reach the lapsed
+    state without sleeping for an hour, so they suppress the trigger.
+
+    `SET LOCAL session_replication_role` rather than `ALTER TABLE ... DISABLE
+    TRIGGER`: the ALTER takes an ACCESS EXCLUSIVE lock on the whole table for the
+    rest of the transaction, which would block every concurrent reader and made
+    the sweeper-concurrency test fail for a reason that had nothing to do with
+    the sweeper. This form is session-scoped and takes no table lock.
+    """
+    with db.transaction() as cur:
+        cur.execute("SET LOCAL session_replication_role = 'replica'")
+        cur.execute(
+            "UPDATE holds SET expires_at = now() - interval '1 second' WHERE id = %s",
+            (hold_id,),
+        )
+
+
 def derived_balance(account_id: UUID) -> int:
     with db.transaction(read_only=True) as cur:
         cur.execute(

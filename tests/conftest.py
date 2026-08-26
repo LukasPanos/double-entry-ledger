@@ -19,6 +19,11 @@ TEST_DATABASE_URL = os.environ.get(
 )
 os.environ["LEDGER_DATABASE_URL"] = TEST_DATABASE_URL
 
+# Background workers are exercised by calling their sweep functions directly, so
+# tests can assert on exactly one pass instead of racing a timer.
+os.environ["LEDGER_RUN_HOLD_EXPIRY_WORKER"] = "false"
+os.environ["LEDGER_RUN_OUTBOX_RELAY"] = "false"
+
 from ledger import db  # noqa: E402  -- must follow the env var above
 from ledger.config import reset_settings  # noqa: E402
 

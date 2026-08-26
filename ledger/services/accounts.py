@@ -127,13 +127,12 @@ def get_balance(account_id: UUID) -> dict[str, Any]:
 
 
 def _sum_active_holds(cur: Cursor, account_id: UUID) -> int:
-    """Holds arrive in Phase 3. Until the table exists, nothing is held."""
-    cur.execute(
-        "SELECT to_regclass('public.holds') IS NOT NULL AS present"
-    )
-    if not cur.fetchone()["present"]:  # type: ignore[index]
-        return 0
+    """Sum of holds that are still reserving funds.
 
+    The `expires_at > now()` predicate is why correctness does not depend on the
+    expiry sweeper: a hold stops reserving funds the moment its deadline passes,
+    not when a background job gets round to relabelling it.
+    """
     cur.execute(
         """
         SELECT COALESCE(SUM(amount_minor), 0) AS held_minor

@@ -80,7 +80,7 @@ class Outcome:
 def execute_once(
     *,
     key: UUID,
-    request: IdempotentRequest,
+    fingerprint: dict[str, Any],
     status_code: int,
     work: Callable[[Cursor], dict[str, Any]],
     isolation: str = READ_COMMITTED,
@@ -91,8 +91,12 @@ def execute_once(
     JSON-serialisable response body. It may be called more than once in total if
     the transaction is retried after a serialization failure, but it commits at
     most once -- which is the property that matters.
+
+    `fingerprint` is the canonical identity of the request. Callers pass
+    `request.fingerprint()` merged with any path parameters, so that the same key
+    used against a different resource is a conflict rather than a replay.
     """
-    request_hash = fingerprint_hash(request.fingerprint())
+    request_hash = fingerprint_hash(fingerprint)
 
     def run(cur: Cursor) -> Outcome:
         if _claim(cur, key, request_hash):

@@ -334,3 +334,171 @@ replay after pruning then hits the "no stored response" path and is refused,
 which is the correct answer for a key that has aged out. That job is not built
 (it is outside the specified scope) but the schema and the replay path already
 accommodate it, which is why the NULL case is handled rather than asserted away.
+
+---
+
+## Phase 3 — Holds
+
+### 3.1 Availability excludes lapsed holds, so the sweeper is not load-bearing
+
+Chosen:
+
+```sql
+SELECT SUM(amount_minor) FROM holds
+ WHERE account_id = ? AND status = 'pending' AND expires_at > now()
+```
+
+Rejected: `WHERE status = 'pending'` alone, relying on the expiry worker to move
+lapsed holds to `expired`.
+
+Reason: this is the most important decision in the phase. If the availability
+query trusted `status` alone, the background worker would be the thing that
+releases customer money — and an outage in a background worker would silently
+freeze funds, with no error anywhere and no failing invariant. Putting
+`expires_at` in the predicate means a hold stops reserving funds at the instant it
+lapses, whether or not any job has run.
+
+What the sweeper is *for*, then: keeping the partial indexes small and making the
+`status` column mean what it says. It writes no entries and changes no numbers.
+`test_a_lapsed_hold_stops_reserving_funds_before_any_sweep` asserts the row still
+reads `pending` while the money is already available, and
+`test_the_sweeper_relabels_lapsed_holds` asserts the sweep changes labels only.
+
+The general principle: a background job may fix up representation, never
+correctness.
+
+### 3.2 The hold is retired *before* the capture entries are written
+
+Chosen order inside the capture transaction:
+
+1. `SELECT ... FOR UPDATE` the hold, assert `pending` and not lapsed
+2. `UPDATE holds SET status = 'captured', captured_transaction_id = <new uuid>`
+3. lock accounts, check overdraft, append the transaction
+
+Rejected: writing the entries first and closing the hold afterwards.
+
+Reason: the overdraft check in step 3 reads live holds. If this hold were still
+`pending` at that moment, the check would count the reserved amount *and* the
+debit that consumes it — the same money subtracted twice — so a full capture
+against a fully-reserved account would be rejected. Retiring first is what makes
+the arithmetic right.
+
+It also turns the overdraft check into a genuine safety net rather than a
+constraint. With the hold retired, available rises by the full authorized amount
+`H`, and the capture is for `C ≤ H`. Written out: if `available = actual − held ≥ 0`
+before, then after retiring `available' = available + H ≥ H ≥ C`, so the check
+provably cannot fail for a valid capture. If it ever does fire, an invariant is
+broken elsewhere and the exception is the alarm.
+
+`test_capture_provably_cannot_overdraft` pins the boundary case: every cent held,
+available exactly zero, full capture succeeds.
+
+This ordering is why `holds.captured_transaction_id` has a **DEFERRABLE** foreign
+key. Step 2 points the hold at a transaction that does not exist until step 3.
+Deferring the constraint to COMMIT lets the terminal state and its link be written
+in one statement, so there is no instant — even mid-transaction — where a hold is
+`captured` with a null link.
+
+### 3.3 `captured` ⟺ `captured_transaction_id IS NOT NULL`, as one CHECK
+
+```sql
+CONSTRAINT holds_capture_link
+    CHECK ((status = 'captured') = (captured_transaction_id IS NOT NULL))
+```
+
+A biconditional rather than two one-way checks. `captured` with no link is a
+capture that moved no money; a link on a `voided` or `expired` hold is a movement
+nobody authorized. One line forbids both, and there is no third case to forget.
+
+### 3.4 The captured amount is derived, not stored
+
+Chosen: `captured_amount_minor` comes from `-SUM(entries.amount_minor)` over the
+capture transaction's entries on the held account. `released_amount_minor` is
+`amount_minor - captured_amount_minor`.
+
+Rejected: adding a `captured_amount_minor` column.
+
+Reason: same argument as balances (1.6). A stored copy is a second source of truth
+that can drift from the entries.
+
+This is *why* a capture may not credit the account the hold is against. If the
+held account appeared as both a debit and a credit in the same transaction, the
+sum over that account would net the two and the captured amount would be
+unrecoverable. Forbidding it keeps the derivation unambiguous, and the error says
+so.
+
+### 3.5 Partial capture spends the whole authorization
+
+Capturing 3,000 against a 5,000 hold leaves no 2,000 hold behind. The hold becomes
+`captured` and the remaining 2,000 is released.
+
+Rejected: reducing the hold's amount and leaving it `pending` for a second capture.
+
+Reason: the hold's amount is immutable (3.6), and "one authorization, at most one
+capture" is far easier to reason about than a partially-consumed hold with a
+mutable remaining balance. Card networks work this way too. A merchant who needs
+to capture twice needs two authorizations.
+
+### 3.6 Terminal states and immutable fields are enforced by trigger
+
+`assert_hold_transition()` rejects, in this order: any update to a hold that has
+already left `pending`; any change to `id`, `account_id`, `amount_minor`,
+`currency`, `expires_at` or `created_at`; any update that leaves the status
+`pending`; and capturing a hold whose deadline has passed.
+
+The immutability check is ordered *before* the "must actually transition" check so
+that an attempt to edit the authorized amount reports `invalid_hold_mutation`
+rather than the less specific complaint that the status did not change. The first
+version had these the other way round and a test caught it.
+
+Raising the authorized amount after the fact is the hold equivalent of editing a
+signed cheque, so it is refused at the database level, not just in the service.
+`holds` also gets the DELETE/TRUNCATE guard: an authorization that was placed and
+then voided is a thing that happened.
+
+The expiry rule uses `now()`, which in Postgres is transaction start time, so it
+agrees with whatever the caller read a moment earlier in the same transaction
+rather than racing a statement clock.
+
+### 3.7 Lock ordering: holds before accounts
+
+Capture locks its hold row, then account rows in ascending id order. Plain
+transfers lock only accounts. Voids lock only a hold. With a single global
+ordering no cycle can form, so there is no deadlock. Written down because it is
+exactly the kind of rule the next feature violates if it is not.
+
+### 3.8 The sweeper uses `FOR UPDATE SKIP LOCKED`
+
+So it never blocks a capture that is mid-flight on the same row — it leaves that
+hold for the next pass. Batched, so one pass cannot lock an unbounded number of
+rows.
+
+`test_the_sweeper_does_not_block_a_concurrent_capture` asserts it. An earlier
+version of that test failed for an unrelated reason worth recording: the helper
+that back-dates a hold used `ALTER TABLE ... DISABLE TRIGGER`, which takes an
+ACCESS EXCLUSIVE lock on the whole table and blocked the sweeper's *read*. The
+helper now uses `SET LOCAL session_replication_role = 'replica'`, which suppresses
+triggers for the transaction without any table lock.
+
+### 3.9 `POST /holds/{id}/void` requires an Idempotency-Key
+
+The endpoint list in the spec does not mark this one as requiring a key, but the
+stated invariant is that every write endpoint does. I required it.
+
+Reason: without a key, a client whose void request times out and retries gets
+`409 hold_not_pending` and cannot tell whether its own first attempt succeeded or
+somebody else voided the hold. With a key it replays the original response, which
+is the answer it actually wants.
+
+### 3.10 Capture destination is supplied by the capture request
+
+The `holds` table as specified has no destination account, so the destination has
+to come from somewhere. The capture request carries a list of credit legs that
+must sum to the captured amount, which handles the marketplace case (split
+between merchant and platform revenue) in one transaction.
+
+The known weakness, stated plainly: **the destination is not authorized at hold
+time.** Whoever can capture a hold chooses where the money lands. Putting
+`destination_account_id` on `holds` would fix that and is the stronger design for
+a real system; it was not chosen because it changes the specified schema and
+forecloses the fee-split case without a second transaction.
