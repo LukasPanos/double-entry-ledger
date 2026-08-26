@@ -1,0 +1,1 @@
+/opt/homebrew/Cellar/postgresql@16/16.15/bin/postgres "-D" ".pgdata" "-p" "55432" "-k" "/tmp" "-c" "listen_addresses=127.0.0.1"
