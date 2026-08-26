@@ -89,6 +89,19 @@ def seed(cur: Cursor) -> dict[str, Any]:
         logging.info("opening funding already posted")
         return created
 
+    # The seed writes through `append_transaction` directly rather than through
+    # the HTTP layer, so it has to record its own idempotency key -- the same
+    # authorization record any client request would leave behind. `response_body`
+    # stays NULL because there was no HTTP response to store, which means a
+    # replay of this key is refused rather than re-executed.
+    cur.execute(
+        """
+        INSERT INTO idempotency_keys (key, request_hash)
+        VALUES (%s, sha256(%s))
+        """,
+        (funding_key, b"scripts.seed:opening-funding:USD"),
+    )
+
     postings = [
         Posting(
             account_id=created["external_settlement:USD"],

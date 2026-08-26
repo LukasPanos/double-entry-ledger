@@ -171,3 +171,248 @@
 2026-08-26 00:23:36.583 EDT [75701] LOG:  checkpoint complete: wrote 274 buffers (1.7%); 0 WAL file(s) added, 0 removed, 1 recycled; write=27.645 s, sync=0.077 s, total=27.850 s; sync files=2497, longest=0.002 s, average=0.001 s; distance=2817 kB, estimate=8382 kB; lsn=0/20A83C8, redo lsn=0/20A8358
 2026-08-26 00:28:08.589 EDT [75701] LOG:  checkpoint starting: time
 2026-08-26 00:28:12.856 EDT [75701] LOG:  checkpoint complete: wrote 43 buffers (0.3%); 0 WAL file(s) added, 0 removed, 0 recycled; write=4.259 s, sync=0.005 s, total=4.268 s; sync files=12, longest=0.001 s, average=0.001 s; distance=198 kB, estimate=7564 kB; lsn=0/20D9E70, redo lsn=0/20D9E38
+2026-08-26 01:06:14.141 EDT [75701] LOG:  checkpoint starting: immediate force wait
+2026-08-26 01:06:14.142 EDT [75701] LOG:  checkpoint complete: wrote 1 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.002 s; sync files=1, longest=0.001 s, average=0.001 s; distance=1 kB, estimate=6807 kB; lsn=0/20DA380, redo lsn=0/20DA348
+2026-08-26 01:06:14.195 EDT [75701] LOG:  checkpoint starting: immediate force wait
+2026-08-26 01:06:14.196 EDT [75701] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.001 s; sync files=2, longest=0.001 s, average=0.001 s; distance=1 kB, estimate=6127 kB; lsn=0/20DA908, redo lsn=0/20DA8D0
+2026-08-26 01:06:21.050 EDT [76829] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:06:21.050 EDT [76829] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:06:21.050 EDT [76829] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:06:21.082 EDT [76834] ERROR:  append_only_violation: UPDATE on "entries" is forbidden
+2026-08-26 01:06:21.082 EDT [76834] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.082 EDT [76834] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.082 EDT [76834] STATEMENT:  UPDATE entries SET amount_minor = 999999
+2026-08-26 01:06:21.095 EDT [76833] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:06:21.095 EDT [76833] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.095 EDT [76833] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.095 EDT [76833] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:06:21.103 EDT [76834] ERROR:  append_only_violation: TRUNCATE on "entries" is forbidden
+2026-08-26 01:06:21.103 EDT [76834] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.103 EDT [76834] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.103 EDT [76834] STATEMENT:  TRUNCATE entries CASCADE
+2026-08-26 01:06:21.111 EDT [76834] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:06:21.111 EDT [76834] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.111 EDT [76834] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.111 EDT [76834] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:06:21.122 EDT [76834] ERROR:  append_only_violation: UPDATE on "transactions" is forbidden
+2026-08-26 01:06:21.122 EDT [76834] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.122 EDT [76834] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.122 EDT [76834] STATEMENT:  UPDATE transactions SET description = 'rewritten'
+2026-08-26 01:06:21.122 EDT [76833] ERROR:  append_only_violation: DELETE on "transactions" is forbidden
+2026-08-26 01:06:21.122 EDT [76833] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:06:21.122 EDT [76833] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:06:21.122 EDT [76833] STATEMENT:  DELETE FROM transactions
+2026-08-26 01:06:21.132 EDT [76833] ERROR:  unbalanced_transaction: transaction 375380c9-8eda-4a2a-973c-b92cfb2ddf2c sums to 50 in USD, expected 0
+2026-08-26 01:06:21.132 EDT [76833] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:06:21.132 EDT [76833] STATEMENT:  COMMIT
+2026-08-26 01:06:21.142 EDT [76833] ERROR:  unbalanced_transaction: transaction 4d8053fc-2253-4d89-b8bb-474882e78ea8 sums to -100 in CAD, expected 0
+2026-08-26 01:06:21.142 EDT [76833] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:06:21.142 EDT [76833] STATEMENT:  COMMIT
+2026-08-26 01:06:21.150 EDT [76833] ERROR:  unbalanced_transaction: transaction 91a19c06-0b59-4366-95d1-bdf92236f33a has 0 entries, a double-entry transaction needs at least 2
+2026-08-26 01:06:21.150 EDT [76833] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:06:21.150 EDT [76833] STATEMENT:  COMMIT
+2026-08-26 01:06:21.159 EDT [76834] ERROR:  unbalanced_transaction: transaction 0ee890b5-71c5-4cd6-b419-14e3b012afe6 has 1 entry, a double-entry transaction needs at least 2
+2026-08-26 01:06:21.159 EDT [76834] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:06:21.159 EDT [76834] STATEMENT:  COMMIT
+2026-08-26 01:06:21.168 EDT [76833] ERROR:  new row for relation "entries" violates check constraint "entries_amount_minor_check"
+2026-08-26 01:06:21.168 EDT [76833] DETAIL:  Failing row contains (1, 72305f13-b71b-42b3-933d-b07be5a1cf1e, 811bcf94-9622-4d5b-8ac8-6fa4483861fc, 0, USD).
+2026-08-26 01:06:21.168 EDT [76833] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:06:21.178 EDT [76834] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_account_id_currency_fkey"
+2026-08-26 01:06:21.178 EDT [76834] DETAIL:  Key (account_id, currency)=(f0ce64ca-8c6a-41a6-b15f-3ae1c7969b6e, USD) is not present in table "accounts".
+2026-08-26 01:06:21.178 EDT [76834] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:06:21.187 EDT [76833] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_transaction_id_fkey"
+2026-08-26 01:06:21.187 EDT [76833] DETAIL:  Key (transaction_id)=(817e4644-7f7b-4d7d-96c0-1339af4d47fc) is not present in table "transactions".
+2026-08-26 01:06:21.187 EDT [76833] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:06:21.196 EDT [76834] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:06:21.196 EDT [76834] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:06:21.196 EDT [76834] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:06:21.208 EDT [76834] ERROR:  duplicate key value violates unique constraint "transactions_prev_hash_key"
+2026-08-26 01:06:21.208 EDT [76834] DETAIL:  Key (prev_hash)=(\x1111111111111111111111111111111111111111111111111111111111111111) already exists.
+2026-08-26 01:06:21.208 EDT [76834] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:06:21.217 EDT [76834] ERROR:  new row for relation "transactions" violates check constraint "transactions_tx_hash_check"
+2026-08-26 01:06:21.217 EDT [76834] DETAIL:  Failing row contains (0f84353a-1755-4fb4-813d-c70dd74c0f0e, 1, b12b3bef-3681-4c3e-a8fb-85a392bd4003, raw insert, 2026-08-26 05:06:21.217851+00, \x0f84353a17554fb4813dc70dd74c0f0e0f84353a17554fb4813dc70dd74c0f..., \x73686f7274).
+2026-08-26 01:06:21.217 EDT [76834] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:09:57.980 EDT [76916] ERROR:  insert or update on table "transactions" violates foreign key constraint "transactions_idempotency_key_fkey"
+2026-08-26 01:09:57.980 EDT [76916] DETAIL:  Key (idempotency_key)=(c895840e-0041-4bfa-ae4b-d6428ae7921d) is not present in table "idempotency_keys".
+2026-08-26 01:09:57.980 EDT [76916] STATEMENT:  
+	                INSERT INTO transactions
+	                    (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	                VALUES ($1, $2, $3, $4, $5, $6)
+	                
+2026-08-26 01:10:13.227 EDT [76952] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:10:13.227 EDT [76952] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:10:13.227 EDT [76952] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:10:13.271 EDT [76957] ERROR:  append_only_violation: UPDATE on "entries" is forbidden
+2026-08-26 01:10:13.271 EDT [76957] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.271 EDT [76957] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.271 EDT [76957] STATEMENT:  UPDATE entries SET amount_minor = 999999
+2026-08-26 01:10:13.283 EDT [76956] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:10:13.283 EDT [76956] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.283 EDT [76956] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.283 EDT [76956] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:10:13.292 EDT [76957] ERROR:  append_only_violation: TRUNCATE on "entries" is forbidden
+2026-08-26 01:10:13.292 EDT [76957] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.292 EDT [76957] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.292 EDT [76957] STATEMENT:  TRUNCATE entries CASCADE
+2026-08-26 01:10:13.299 EDT [76957] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:10:13.299 EDT [76957] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.299 EDT [76957] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.299 EDT [76957] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:10:13.311 EDT [76957] ERROR:  append_only_violation: UPDATE on "transactions" is forbidden
+2026-08-26 01:10:13.311 EDT [76957] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.311 EDT [76957] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.311 EDT [76957] STATEMENT:  UPDATE transactions SET description = 'rewritten'
+2026-08-26 01:10:13.311 EDT [76956] ERROR:  append_only_violation: DELETE on "transactions" is forbidden
+2026-08-26 01:10:13.311 EDT [76956] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:10:13.311 EDT [76956] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:10:13.311 EDT [76956] STATEMENT:  DELETE FROM transactions
+2026-08-26 01:10:13.321 EDT [76956] ERROR:  unbalanced_transaction: transaction e03e66b7-ce15-4e2c-a096-d3eb4d9936f6 sums to 50 in USD, expected 0
+2026-08-26 01:10:13.321 EDT [76956] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:10:13.321 EDT [76956] STATEMENT:  COMMIT
+2026-08-26 01:10:13.332 EDT [76956] ERROR:  unbalanced_transaction: transaction 16fd0e40-504b-410a-ad62-ec0e7f16c576 sums to -100 in CAD, expected 0
+2026-08-26 01:10:13.332 EDT [76956] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:10:13.332 EDT [76956] STATEMENT:  COMMIT
+2026-08-26 01:10:13.339 EDT [76956] ERROR:  unbalanced_transaction: transaction 85279df9-305a-4f56-a2ec-a4bcfa2687a1 has 0 entries, a double-entry transaction needs at least 2
+2026-08-26 01:10:13.339 EDT [76956] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:10:13.339 EDT [76956] STATEMENT:  COMMIT
+2026-08-26 01:10:13.349 EDT [76957] ERROR:  unbalanced_transaction: transaction 5745707e-499a-4a59-aad4-5ca0f49c17bd has 1 entry, a double-entry transaction needs at least 2
+2026-08-26 01:10:13.349 EDT [76957] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:10:13.349 EDT [76957] STATEMENT:  COMMIT
+2026-08-26 01:10:13.358 EDT [76956] ERROR:  new row for relation "entries" violates check constraint "entries_amount_minor_check"
+2026-08-26 01:10:13.358 EDT [76956] DETAIL:  Failing row contains (1, ce760400-6ac5-409d-bb60-7f8527b2bca2, 6f4b11e7-eb11-4df1-8a0f-d9c700a94f1c, 0, USD).
+2026-08-26 01:10:13.358 EDT [76956] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:10:13.369 EDT [76957] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_account_id_currency_fkey"
+2026-08-26 01:10:13.369 EDT [76957] DETAIL:  Key (account_id, currency)=(ed8ad313-7947-4e6e-be3d-3fa9208655d0, USD) is not present in table "accounts".
+2026-08-26 01:10:13.369 EDT [76957] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:10:13.379 EDT [76956] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_transaction_id_fkey"
+2026-08-26 01:10:13.379 EDT [76956] DETAIL:  Key (transaction_id)=(97c4794e-2c09-43dc-9019-da637f5aae9c) is not present in table "transactions".
+2026-08-26 01:10:13.379 EDT [76956] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:10:13.389 EDT [76957] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:10:13.389 EDT [76957] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:10:13.389 EDT [76957] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:10:13.400 EDT [76957] ERROR:  duplicate key value violates unique constraint "transactions_prev_hash_key"
+2026-08-26 01:10:13.400 EDT [76957] DETAIL:  Key (prev_hash)=(\x1111111111111111111111111111111111111111111111111111111111111111) already exists.
+2026-08-26 01:10:13.400 EDT [76957] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:10:13.410 EDT [76957] ERROR:  new row for relation "transactions" violates check constraint "transactions_tx_hash_check"
+2026-08-26 01:10:13.410 EDT [76957] DETAIL:  Failing row contains (bfd151cf-051a-4b0c-b0c5-8dd0f5b1a7a6, 1, 0614b79e-89a9-41e6-acfb-b6a7bd160a2f, raw insert, 2026-08-26 05:10:13.409973+00, \xbfd151cf051a4b0cb0c58dd0f5b1a7a6bfd151cf051a4b0cb0c58dd0f5b1a7..., \x73686f7274).
+2026-08-26 01:10:13.410 EDT [76957] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:10:15.105 EDT [76970] ERROR:  insert or update on table "transactions" violates foreign key constraint "transactions_idempotency_key_fkey"
+2026-08-26 01:10:15.105 EDT [76970] DETAIL:  Key (idempotency_key)=(d6657288-abf4-48eb-a0b6-f6caa7c853f2) is not present in table "idempotency_keys".
+2026-08-26 01:10:15.105 EDT [76970] STATEMENT:  
+	                INSERT INTO transactions
+	                    (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	                VALUES ($1, $2, $3, $4, $5, $6)
+	                
+2026-08-26 01:11:08.922 EDT [77011] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:11:08.922 EDT [77011] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:11:08.922 EDT [77011] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:11:08.954 EDT [77016] ERROR:  append_only_violation: UPDATE on "entries" is forbidden
+2026-08-26 01:11:08.954 EDT [77016] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.954 EDT [77016] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.954 EDT [77016] STATEMENT:  UPDATE entries SET amount_minor = 999999
+2026-08-26 01:11:08.967 EDT [77015] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:11:08.967 EDT [77015] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.967 EDT [77015] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.967 EDT [77015] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:11:08.976 EDT [77016] ERROR:  append_only_violation: TRUNCATE on "entries" is forbidden
+2026-08-26 01:11:08.976 EDT [77016] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.976 EDT [77016] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.976 EDT [77016] STATEMENT:  TRUNCATE entries CASCADE
+2026-08-26 01:11:08.985 EDT [77016] ERROR:  append_only_violation: DELETE on "entries" is forbidden
+2026-08-26 01:11:08.985 EDT [77016] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.985 EDT [77016] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.985 EDT [77016] STATEMENT:  DELETE FROM entries WHERE account_id = $1
+2026-08-26 01:11:08.996 EDT [77016] ERROR:  append_only_violation: UPDATE on "transactions" is forbidden
+2026-08-26 01:11:08.996 EDT [77016] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.996 EDT [77016] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.996 EDT [77016] STATEMENT:  UPDATE transactions SET description = 'rewritten'
+2026-08-26 01:11:08.996 EDT [77015] ERROR:  append_only_violation: DELETE on "transactions" is forbidden
+2026-08-26 01:11:08.996 EDT [77015] HINT:  Ledger history is immutable. Correct mistakes by posting a new reversing transaction.
+2026-08-26 01:11:08.996 EDT [77015] CONTEXT:  PL/pgSQL function reject_mutation() line 3 at RAISE
+2026-08-26 01:11:08.996 EDT [77015] STATEMENT:  DELETE FROM transactions
+2026-08-26 01:11:09.006 EDT [77015] ERROR:  unbalanced_transaction: transaction cf546e00-9808-4ed0-a807-81b63c028c18 sums to 50 in USD, expected 0
+2026-08-26 01:11:09.006 EDT [77015] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:11:09.006 EDT [77015] STATEMENT:  COMMIT
+2026-08-26 01:11:09.016 EDT [77015] ERROR:  unbalanced_transaction: transaction 28151aa9-d1cc-432e-968d-dce8f0b5b9b3 sums to -100 in CAD, expected 0
+2026-08-26 01:11:09.016 EDT [77015] CONTEXT:  PL/pgSQL function assert_transaction_balanced() line 14 at RAISE
+2026-08-26 01:11:09.016 EDT [77015] STATEMENT:  COMMIT
+2026-08-26 01:11:09.023 EDT [77015] ERROR:  unbalanced_transaction: transaction aec74c93-683e-4d01-9854-74549f870642 has 0 entries, a double-entry transaction needs at least 2
+2026-08-26 01:11:09.023 EDT [77015] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:11:09.023 EDT [77015] STATEMENT:  COMMIT
+2026-08-26 01:11:09.033 EDT [77016] ERROR:  unbalanced_transaction: transaction ebd0575b-0755-4d58-9275-10c3a129fb9b has 1 entry, a double-entry transaction needs at least 2
+2026-08-26 01:11:09.033 EDT [77016] CONTEXT:  PL/pgSQL function assert_transaction_has_entries() line 8 at RAISE
+2026-08-26 01:11:09.033 EDT [77016] STATEMENT:  COMMIT
+2026-08-26 01:11:09.043 EDT [77015] ERROR:  new row for relation "entries" violates check constraint "entries_amount_minor_check"
+2026-08-26 01:11:09.043 EDT [77015] DETAIL:  Failing row contains (1, a10a5bed-a5a8-46ca-8fd5-f937a8b46872, 8f701a1d-4338-41c4-be51-0fcdf35d0a56, 0, USD).
+2026-08-26 01:11:09.043 EDT [77015] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:11:09.054 EDT [77016] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_account_id_currency_fkey"
+2026-08-26 01:11:09.054 EDT [77016] DETAIL:  Key (account_id, currency)=(be069d8a-d010-4e6f-8c2a-86fc1e3419e7, USD) is not present in table "accounts".
+2026-08-26 01:11:09.054 EDT [77016] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:11:09.064 EDT [77015] ERROR:  insert or update on table "entries" violates foreign key constraint "entries_transaction_id_fkey"
+2026-08-26 01:11:09.064 EDT [77015] DETAIL:  Key (transaction_id)=(36b26126-b199-47b7-bded-3e2dfe93c560) is not present in table "transactions".
+2026-08-26 01:11:09.064 EDT [77015] STATEMENT:  INSERT INTO entries (transaction_id, account_id, amount_minor, currency) VALUES ($1, $2, $3, $4)
+2026-08-26 01:11:09.072 EDT [77016] ERROR:  duplicate key value violates unique constraint "accounts_one_system_account_per_currency"
+2026-08-26 01:11:09.072 EDT [77016] DETAIL:  Key (type, currency)=(external_settlement, USD) already exists.
+2026-08-26 01:11:09.072 EDT [77016] STATEMENT:  
+	        INSERT INTO accounts (id, name, currency, type)
+	        VALUES ($1, $2, $3, $4)
+	        RETURNING id, name, currency, type, created_at
+	        
+2026-08-26 01:11:09.083 EDT [77016] ERROR:  duplicate key value violates unique constraint "transactions_prev_hash_key"
+2026-08-26 01:11:09.083 EDT [77016] DETAIL:  Key (prev_hash)=(\x1111111111111111111111111111111111111111111111111111111111111111) already exists.
+2026-08-26 01:11:09.083 EDT [77016] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:11:09.093 EDT [77016] ERROR:  new row for relation "transactions" violates check constraint "transactions_tx_hash_check"
+2026-08-26 01:11:09.093 EDT [77016] DETAIL:  Failing row contains (b812a9ca-c75a-46a8-80eb-53461e23be15, 1, 336a43ef-9a35-4161-a8da-8de3289b8f78, raw insert, 2026-08-26 05:11:09.093376+00, \xb812a9cac75a46a880eb53461e23be15b812a9cac75a46a880eb53461e23be..., \x73686f7274).
+2026-08-26 01:11:09.093 EDT [77016] STATEMENT:  
+	        INSERT INTO transactions
+	            (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	        VALUES ($1, $2, $3, $4, $5, $6)
+	        
+2026-08-26 01:11:10.765 EDT [77028] ERROR:  insert or update on table "transactions" violates foreign key constraint "transactions_idempotency_key_fkey"
+2026-08-26 01:11:10.765 EDT [77028] DETAIL:  Key (idempotency_key)=(fe05e6f6-b0cf-4146-a9ea-a51f00536ad7) is not present in table "idempotency_keys".
+2026-08-26 01:11:10.765 EDT [77028] STATEMENT:  
+	                INSERT INTO transactions
+	                    (id, idempotency_key, description, created_at, prev_hash, tx_hash)
+	                VALUES ($1, $2, $3, $4, $5, $6)
+	                
+2026-08-26 01:11:14.747 EDT [75701] LOG:  checkpoint starting: time

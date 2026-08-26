@@ -41,6 +41,28 @@ def revenue_account(currency: str = "USD") -> UUID:
     )
 
 
+def transaction_request(
+    entries: list[tuple[UUID, int, str]], description: str = "test transaction"
+) -> CreateTransactionRequest:
+    return CreateTransactionRequest(
+        description=description,
+        entries=[
+            {"account_id": a, "amount_minor": m, "currency": c} for a, m, c in entries
+        ],
+    )
+
+
+def post_outcome(
+    entries: list[tuple[UUID, int, str]],
+    *,
+    description: str = "test transaction",
+    key: UUID | None = None,
+):
+    return transactions_service.post_transaction(
+        transaction_request(entries, description), key or uuid4()
+    )
+
+
 def post(
     entries: list[tuple[UUID, int, str]],
     *,
@@ -48,16 +70,7 @@ def post(
     key: UUID | None = None,
 ) -> dict[str, Any]:
     """Post a transaction from (account_id, amount_minor, currency) tuples."""
-    return transactions_service.post_transaction(
-        CreateTransactionRequest(
-            description=description,
-            entries=[
-                {"account_id": a, "amount_minor": m, "currency": c}
-                for a, m, c in entries
-            ],
-        ),
-        key or uuid4(),
-    )
+    return post_outcome(entries, description=description, key=key).body
 
 
 def fund(account_id: UUID, amount_minor: int, currency: str = "USD") -> dict[str, Any]:
@@ -126,6 +139,13 @@ def raw_insert_transaction(
     from datetime import datetime, timezone
 
     transaction_id = transaction_id or uuid4()
+    key = uuid4()
+    # transactions.idempotency_key has a foreign key to idempotency_keys as of
+    # migration 002, so even a deliberately raw insert needs the parent row.
+    cur.execute(
+        "INSERT INTO idempotency_keys (key, request_hash) VALUES (%s, %s)",
+        (key, b"\x00" * 32),
+    )
     cur.execute(
         """
         INSERT INTO transactions
@@ -134,7 +154,7 @@ def raw_insert_transaction(
         """,
         (
             transaction_id,
-            uuid4(),
+            key,
             "raw insert",
             datetime.now(timezone.utc),
             prev_hash if prev_hash is not None else transaction_id.bytes * 2,

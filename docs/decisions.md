@@ -196,3 +196,141 @@ correctness check in the system — one query, no parameters.
 is no overdraft check yet, and `held_minor` is hard-coded to `0`. Those are
 Phase 2 and Phase 3; the tests assert the Phase 1 behaviour so the change is
 visible when it lands.
+
+---
+
+## Phase 2 — Idempotency
+
+### 2.1 Insert-first, not check-then-insert
+
+Chosen:
+
+```sql
+INSERT INTO idempotency_keys (key, request_hash) VALUES (?, ?)
+ON CONFLICT (key) DO NOTHING
+```
+
+as the *first* statement of the same transaction that does the business write.
+`rowcount = 1` means we own the key and should do the work; `rowcount = 0` means
+someone else owns it and we should replay their response.
+
+Rejected: `SELECT ... WHERE key = ?`, then branch, then `INSERT`.
+
+Reason: the select-then-insert version has a window between the two statements.
+Under concurrent retries — which is the *only* situation this feature exists for
+— both requests see "no row", both decide to process, and both write. Making the
+insert itself the check removes the window, because the unique index is the
+arbiter and exactly one insert can win. There is no application-level
+coordination, no lock manager, and no state machine.
+
+### 2.2 The loser blocks rather than polls, and that is Postgres doing it
+
+`INSERT ... ON CONFLICT DO NOTHING` against a row inserted by an *uncommitted*
+transaction does not return immediately. It blocks on that transaction's xid.
+So under READ COMMITTED the second request waits, and then observes a settled
+outcome:
+
+* owner committed → the conflict is real, read the stored response, replay it.
+* owner rolled back → no conflicting row remains, our insert wins, we process.
+
+This is why the concurrency test can assert *exactly* one processed and one
+replayed rather than "one processed and one got some error". It is also why there
+is no "in flight, come back later" retry loop in the code.
+
+`test_concurrent_claim_blocks_until_the_owner_commits` asserts the mechanism
+directly rather than inferring it from the outcome: it holds the owning
+transaction open, asserts the contender has *not* returned after a second, reads
+`pg_stat_activity` to confirm the contender is genuinely waiting on a lock, then
+commits and asserts the contender wakes up and inserts nothing.
+
+### 2.3 A failed request does not consume its key
+
+Because the reservation and the business write are one transaction, a failure
+rolls back both. There is no committed `idempotency_keys` row for a request that
+did not succeed, so a client that fixes its payload can reuse the key.
+
+Rejected: Stripe's behaviour, where an error response is also recorded against
+the key and replayed on retry.
+
+Reason: recording the error requires committing the key row in a transaction
+*separate* from the one that failed. That is a dual write, and it reintroduces
+exactly the atomicity problem this phase exists to remove — now with the twist
+that a crash between the two writes leaves a key that permanently refuses a
+payment that never happened. Keeping it to one transaction means the failure mode
+is "retry re-executes", which for a deterministic error just fails again
+identically, and for a transient error is what you actually want.
+
+The cost, stated plainly: an idempotency key does not protect against a client
+retrying a request that failed *validation* and succeeding the second time
+because account state changed in between. That is a real difference from Stripe
+and it is a deliberate trade.
+
+A consequence worth noting: `response_body IS NULL` on a *committed* row is
+therefore unreachable through the service. That state is reserved for rows
+written by the 002 backfill, or by a future retention job. Both are treated the
+same way — refuse to replay rather than guess — because re-executing is the one
+outcome that could double-write.
+
+### 2.4 The fingerprint is hand-written per request type
+
+Chosen: each request model implements `fingerprint()` returning a canonical
+dict, hashed with sorted-key JSON.
+
+Rejected: hashing the raw HTTP body; hashing `model_dump_json()`.
+
+Reason for not using the raw body: whitespace and key order would make two
+byte-different encodings of the same request look like a conflict. Reason for not
+using `model_dump_json()`: its output depends on model field *declaration* order,
+so reordering fields in a future refactor would silently invalidate every stored
+fingerprint.
+
+Two things the hand-written version buys that neither alternative does:
+
+1. **The operation is part of the identity.** `{"op": "post_transaction", ...}`
+   means one key cannot be used for both `POST /transactions` and
+   `POST /holds/{id}/capture`. A generic body hash would let a key cross
+   endpoints.
+2. **Normalisation is a per-field decision.** Entry order in a transaction is
+   semantically meaningless — the hash chain sorts entries too — so the
+   fingerprint sorts them, and a client that retries with its legs reordered
+   gets a replay instead of a spurious 409. Sorting preserves the multiset, so no
+   two genuinely different requests can collide as a result. Blanket sorting of
+   every list in every model would be wrong for some future field where order
+   matters, which is why this is opt-in rather than automatic.
+
+`test_reordered_entries_are_the_same_request` and
+`test_swapped_direction_is_a_different_request` pin both halves of that.
+
+### 2.5 A replay returns the original status code
+
+Chosen: the stored `status_code` (201 for a created transaction), with
+`replayed: true` added to the body. The route returns a raw `JSONResponse` so the
+stored body is echoed rather than re-serialised through the response model.
+
+Rejected: 200 on replay.
+
+Reason: the client's question is "did my request happen", and the truthful answer
+is the answer the first attempt gave. `replayed` is what lets the caller tell the
+two apart, and it is additive so it cannot break a client that ignores it.
+Echoing the stored bytes also means replay stays faithful if the response model
+later gains a field — the old response does not silently acquire a new key with a
+default value.
+
+### 2.6 `transactions.idempotency_key` is a real foreign key
+
+Chosen: `FOREIGN KEY (idempotency_key) REFERENCES idempotency_keys (key)`, with
+migration 002 backfilling orphans before adding the constraint.
+
+Reason: it makes "no transaction exists that no client asked for" structural
+rather than conventional. Since the reservation is inserted first in the same
+transaction, the constraint is free at write time.
+
+The cost, which is real: idempotency keys are conventionally expired (Stripe
+drops them after 24h), and the foreign key means the row cannot be deleted while
+a transaction references it. The resolution is to prune the *payload* rather than
+the row — a retention job would set `response_body` and `status_code` to NULL
+while keeping `key` and `request_hash` as the permanent authorization record. A
+replay after pruning then hits the "no stored response" path and is refused,
+which is the correct answer for a key that has aged out. That job is not built
+(it is outside the specified scope) but the schema and the replay path already
+accommodate it, which is why the NULL case is handled rather than asserted away.

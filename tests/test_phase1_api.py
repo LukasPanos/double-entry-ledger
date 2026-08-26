@@ -148,29 +148,6 @@ def test_float_amount_returns_422(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_reused_idempotency_key_is_refused_in_phase_1(client: TestClient) -> None:
-    """Phase 1 has only the UNIQUE constraint, so a retry is refused with 409.
-    Phase 2 upgrades this to replaying the original response."""
-    alice = _create_account(client)
-    settlement = _create_account(client, type_="external_settlement")
-    key = str(uuid4())
-    payload = {
-        "description": "funding",
-        "entries": [
-            {"account_id": settlement, "amount_minor": -100, "currency": "USD"},
-            {"account_id": alice, "amount_minor": 100, "currency": "USD"},
-        ],
-    }
-
-    assert client.post("/transactions", headers={"Idempotency-Key": key}, json=payload).status_code == 201
-    second = client.post("/transactions", headers={"Idempotency-Key": key}, json=payload)
-    assert second.status_code == 409
-    assert second.json()["error"]["code"] == "idempotency_key_reused"
-
-    # Crucially: only one set of entries exists.
-    assert client.get(f"/accounts/{alice}/balance").json()["actual_minor"] == 100
-
-
 def test_entries_endpoint_paginates(client: TestClient) -> None:
     alice = _create_account(client)
     bob = _create_account(client)

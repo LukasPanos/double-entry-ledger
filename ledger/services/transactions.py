@@ -1,7 +1,8 @@
 """POST /transactions and the entry-history read path.
 
-Phase 1 scope: validate, lock, write, return. Idempotent replay lands in
-Phase 2 and the switchable concurrency strategy in Phase 4.
+The write path is: validate before opening a transaction, then inside one
+transaction claim the idempotency key, lock the accounts, append. The
+switchable concurrency strategy lands in Phase 4.
 """
 
 from __future__ import annotations
@@ -9,12 +10,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import psycopg
 from psycopg import Cursor
 
-from ledger.db import READ_COMMITTED, run_in_transaction, transaction
-from ledger.errors import AccountNotFound, IdempotencyKeyReused, TransactionNotFound
-from ledger.schemas import CreateTransactionRequest
+from ledger.db import READ_COMMITTED, transaction
+from ledger.errors import AccountNotFound, TransactionNotFound
+from ledger.schemas import CreateTransactionRequest, TransactionResponse
+from ledger.services.idempotency import Outcome, execute_once
 from ledger.services.posting import (
     Posting,
     append_transaction,
@@ -26,7 +27,7 @@ from ledger.services.posting import (
 
 def post_transaction(
     request: CreateTransactionRequest, idempotency_key: UUID
-) -> dict[str, Any]:
+) -> Outcome:
     postings = [
         Posting(
             account_id=e.account_id,
@@ -45,25 +46,24 @@ def post_transaction(
     def work(cur: Cursor) -> dict[str, Any]:
         accounts = lock_accounts(cur, [p.account_id for p in postings])
         assert_currencies_match(postings, accounts)
-        return append_transaction(
+        tx = append_transaction(
             cur,
             description=request.description,
             idempotency_key=idempotency_key,
             postings=postings,
         )
+        # Serialised here, inside the transaction, because this exact body is
+        # what gets stored for replay. Building it later would risk the stored
+        # response and the returned response drifting apart.
+        return TransactionResponse.model_validate(tx).model_dump(mode="json")
 
-    try:
-        return run_in_transaction(work, isolation=READ_COMMITTED)
-    except psycopg.errors.UniqueViolation as exc:
-        # Phase 1 dedup is nothing but the UNIQUE constraint on
-        # transactions.idempotency_key: a retried request is refused rather than
-        # replayed. Phase 2 replaces this with stored-response replay.
-        if exc.diag.constraint_name == "transactions_idempotency_key_key":
-            raise IdempotencyKeyReused(
-                f"idempotency key {idempotency_key} has already been used",
-                idempotency_key=str(idempotency_key),
-            ) from exc
-        raise
+    return execute_once(
+        key=idempotency_key,
+        request=request,
+        status_code=201,
+        work=work,
+        isolation=READ_COMMITTED,
+    )
 
 
 # ------------------------------------------------------------------- reads ----

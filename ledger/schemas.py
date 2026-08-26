@@ -31,6 +31,27 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class IdempotentRequest(Strict):
+    """A request that can be safely retried under the same Idempotency-Key.
+
+    Subclasses implement `fingerprint()`, which returns the canonical identity
+    of the request. Two requests with the same key and the same fingerprint are
+    the same request and the second one replays; the same key with a different
+    fingerprint is a client bug and gets a 409.
+
+    The fingerprint is written by hand rather than derived from the model, for
+    two reasons. It has to include the operation and any path parameters, so
+    that one key cannot be used for both `POST /transactions` and
+    `POST /holds/{id}/capture`. And normalisation has to be a per-field
+    decision: entry order in a transaction is semantically meaningless and is
+    therefore sorted away, while a field where order does matter must not be.
+    Blanket normalisation of every list would be wrong for some future model.
+    """
+
+    def fingerprint(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+
 # ------------------------------------------------------------------ accounts --
 
 
@@ -64,9 +85,24 @@ class EntryInput(Strict):
         return v
 
 
-class CreateTransactionRequest(Strict):
+class CreateTransactionRequest(IdempotentRequest):
     description: str = Field(min_length=1, max_length=500)
     entries: list[EntryInput] = Field(min_length=2, max_length=1000)
+
+    def fingerprint(self) -> dict[str, Any]:
+        return {
+            "op": "post_transaction",
+            "description": self.description,
+            # Sorted: the ledger treats entry order as meaningless (the hash
+            # chain sorts too), so a client that retries with its legs in a
+            # different order is making the same request, not a different one.
+            # Sorting a list preserves the multiset, so no two distinct requests
+            # can collide as a result.
+            "entries": sorted(
+                [str(e.account_id), e.currency, e.amount_minor]
+                for e in self.entries
+            ),
+        }
 
 
 class EntryResponse(Strict):

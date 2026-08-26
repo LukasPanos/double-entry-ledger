@@ -27,6 +27,7 @@ from ledger.schemas import (
 )
 from ledger.services import accounts as accounts_service
 from ledger.services import transactions as transactions_service
+from ledger.services.idempotency import Outcome
 
 log = logging.getLogger("ledger.api")
 
@@ -83,6 +84,19 @@ def idempotency_key(
 IdempotencyKey = Annotated[UUID, Depends(idempotency_key)]
 
 
+def _idempotent(outcome: Outcome) -> JSONResponse:
+    """Return the outcome of an idempotent write.
+
+    A replay carries the *original* status code, not 200: the client asked "did
+    my request happen", and the honest answer is the answer the first attempt
+    gave, plus `replayed: true` so the caller can tell the difference. Returning
+    a raw JSONResponse means the stored body is echoed byte-for-byte rather than
+    being re-serialised through the response model, which is what makes replay
+    faithful even if the model later gains a field.
+    """
+    return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+
+
 # ---------------------------------------------------------------- accounts ---
 
 
@@ -114,10 +128,8 @@ def list_entries(
 
 
 @app.post("/transactions", response_model=TransactionResponse, status_code=201)
-def post_transaction(
-    request: CreateTransactionRequest, key: IdempotencyKey
-) -> Any:
-    return transactions_service.post_transaction(request, key)
+def post_transaction(request: CreateTransactionRequest, key: IdempotencyKey) -> Any:
+    return _idempotent(transactions_service.post_transaction(request, key))
 
 
 @app.get("/transactions/{transaction_id}", response_model=TransactionResponse)
