@@ -863,3 +863,154 @@ zero-sum check cannot see.
 conversion, but it would route an ordinary transfer through the liquidity pools
 and inflate their turnover with movements that are not FX — making pool volume
 useless as a metric, for no benefit.
+
+---
+
+## Phase 6 — Outbox and webhook delivery
+
+### 6.1 The emit lives inside `append_transaction`, not in the callers
+
+`outbox.emit()` takes a **cursor**, not a connection, and is called from
+`append_transaction` on the same cursor as the entry inserts.
+
+Rejected: emitting from each service (`transactions`, `holds`, `fx`) after the
+write returns.
+
+Reason: the same argument as the balance cache in 1.6. Every entry this service
+writes goes through `append_transaction`, so putting the emit there makes "a
+committed transaction always has an event" structurally true rather than a rule
+each new call site has to remember. A `emit()` that opened its own transaction
+would silently reintroduce the exact dual write the pattern exists to remove,
+which is why it takes a cursor — the signature makes the mistake hard to make.
+
+`every_transaction_has_an_outbox_event` in `/reconciliation` is what turns that
+from an argument into a verified fact, and it is specifically the check that
+would catch someone refactoring the emit into its own transaction.
+`test_a_failure_after_the_emit_still_leaves_no_event` covers the other direction:
+it blows up *after* the outbox row is inserted and asserts the row does not
+survive the rollback.
+
+The expiry sweeper emits inside its own transaction too. A background job is not
+exempt from the dual-write problem.
+
+### 6.2 The claim is a lease, and the HTTP call is outside the transaction
+
+`claim_due()` increments `attempts`, pushes `next_attempt_at` forward, and
+**commits** — then delivery happens, then a second transaction records the
+outcome.
+
+Rejected: delivering inside the claiming transaction.
+
+Reason: an HTTP call inside a database transaction holds a row lock for a network
+round trip, and a hung endpoint pins it for the whole timeout. Worse, it makes
+the database's availability depend on a third party's.
+
+The consequence is deliberate and is the crux of the whole phase: **if the relay
+dies after claiming and before recording, the event is delivered twice.** That is
+at-least-once, and it is the strongest guarantee available without a transaction
+spanning both systems. Using `next_attempt_at` as the lease means recovery needs
+no separate reaper — a crashed relay's events simply become due again.
+
+`test_a_claim_is_a_lease_that_expires` simulates the crash directly: it claims,
+records nothing, asserts a second relay pass sees nothing while the lease holds,
+then expires the lease and asserts the event comes back with `attempts = 2`.
+
+### 6.3 Exactly-once is completed at the receiver, and the test proves duplicates happen
+
+The relay cannot deliver exactly once. Nothing can, across two systems without a
+shared transaction. So the contract is at-least-once delivery plus dedup on the
+event id, and `scripts/receiver.py` implements the consumer half.
+
+The important detail is **where the receiver's injected failure happens**: it
+records the event and *then* returns 500. That is the failure mode that actually
+tests the contract — the event was processed and the acknowledgement was lost, so
+the redelivery is a genuine duplicate. A receiver that failed *before* processing
+would only test that retries occur, which is the easy half.
+
+This matters because it is the difference between a test that proves something and
+one that passes vacuously. The headline test asserts:
+
+* the unique event set matches the outbox exactly (nothing lost, nothing extra),
+* `failures_injected > 0` — the fault injection did something,
+* `duplicates > 0` — a duplicate really was delivered,
+* `request_count > unique_events` — retries really happened.
+
+Measured on a 41-event run at a 30% failure rate: **63 requests, 41 unique
+events, 22 duplicates, one event needing 4 attempts, 0 dead-lettered.**
+
+### 6.4 What is guaranteed about ordering, and what is not
+
+Events are claimed `ORDER BY id` and delivered sequentially, so on the happy path
+a consumer sees them in commit order. **Retries break that** — a failed event is
+redelivered behind events created after it.
+
+Rejected: head-of-line blocking, where a failing event stalls everything behind
+it until it dead-letters.
+
+Reason: that buys strict ordering at the price of letting one poison event stop
+notifications for every account in the system. For a payments notification stream
+that is the wrong trade. Consumers must be idempotent anyway (6.3), and
+idempotent consumers are usually order-tolerant.
+
+This is what `bigserial` buys and all it buys: a total order to deliver *in*, not
+a guarantee the consumer observes it.
+
+### 6.5 The gotcha this relay avoids
+
+A tempting relay tracks a high-water mark: `WHERE id > last_seen_id`. **That
+silently loses events.** Sequence values are handed out before commit, so the
+transaction holding id 5 can commit before the transaction holding id 4; a reader
+that reaches 5 first will never look at 4 again.
+
+This relay keys off `status = 'pending'` instead, so an event is only ever
+dismissed once its outcome is recorded. Written down because it is the single most
+common way a hand-rolled outbox is wrong, and the bug is invisible under light
+load.
+
+### 6.6 Webhooks are HMAC signed over the exact bytes sent
+
+`X-Signature: sha256=<hex>` over the request body, with `webhook_secret`.
+
+Signed over the *bytes on the wire* rather than over the payload object, so the
+receiver verifies without re-serialising — otherwise a difference in key order or
+whitespace between two JSON encoders would produce a valid-but-rejected signature.
+The receiver uses `hmac.compare_digest`, not `==`, because a plain comparison
+leaks how much of the signature matched through timing.
+
+The secret is optional so the relay works against a bare receiver, but an endpoint
+with no signature has no way to distinguish a genuine event from a forged one, and
+webhook payloads here contain balances.
+
+### 6.7 A failing endpoint cannot affect the ledger
+
+Dead-lettering after `outbox_max_attempts` means a permanently broken consumer
+stops consuming relay capacity, and `GET /outbox/stats` reports the backlog and
+the age of the oldest undelivered event.
+
+The property worth stating plainly, and tested directly in
+`test_the_ledger_is_unaffected_by_delivery_failure`: with the endpoint entirely
+unreachable and events dead-lettering, the balances are correct and all eleven
+reconciliation checks pass. The outbox is what makes notification an availability
+concern rather than a correctness one.
+
+`scripts/relay.py` exists as a separate process even though the API also runs the
+relay as a background task, because the two scale differently: the API is
+latency-bound on request handling, the relay is throughput-bound on somebody
+else's endpoint being slow. Running them apart means a webhook consumer having a
+bad day cannot consume the API's thread pool. Multiple relays are safe —
+`FOR UPDATE SKIP LOCKED` partitions the work, which
+`test_two_relays_do_not_deliver_the_same_event` asserts with four concurrent
+claimers.
+
+### 6.8 Historical transactions are backfilled as delivered
+
+Migration 005 inserts a `delivered` outbox row for every pre-existing transaction,
+marked `"backfilled": true` in the payload.
+
+Rejected: backfilling them as `pending`.
+
+Reason: deploying the migration would then fire a webhook for every transaction in
+history. Marking them delivered is not strictly true, which is exactly why the
+payload says `backfilled` — so nobody later mistakes them for events that were
+genuinely sent. Without the backfill, the new reconciliation check would flag
+every historical transaction forever.

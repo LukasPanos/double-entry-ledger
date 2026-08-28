@@ -42,6 +42,10 @@ class Settings(BaseSettings):
 
     # Phase 6.
     webhook_url: str | None = None
+    # HMAC-SHA256 over the exact request body, sent as X-Signature. Optional so
+    # the relay works against a bare receiver, but a real endpoint has no way to
+    # tell a genuine event from a forged one without it.
+    webhook_secret: str | None = None
     outbox_poll_seconds: float = 1.0
     outbox_batch_size: int = 32
     outbox_max_attempts: int = 6

@@ -73,6 +73,7 @@ def test_every_check_actually_runs() -> None:
         "captured_holds_link_to_real_transactions",
         "non_captured_holds_have_no_transaction",
         "every_transaction_has_an_authorization",
+        "every_transaction_has_an_outbox_event",
         "hash_chain_intact",
     }
 
@@ -486,9 +487,12 @@ def test_reconciliation_endpoint(client: TestClient) -> None:
     healthy_ledger()
     response = client.get("/reconciliation")
     assert response.status_code == 200
+    from ledger.services.reconciliation import CHECKS
+
     body = response.json()
     assert body["ok"] is True
-    assert len(body["checks"]) == 10
+    # The endpoint must report every check the module defines, not a subset.
+    assert [c["name"] for c in body["checks"]] == [c.__name__ for c in CHECKS]
     assert all(c["passed"] for c in body["checks"])
 
 

@@ -297,6 +297,31 @@ def every_transaction_has_an_authorization(cur: Cursor) -> dict[str, Any]:
     )
 
 
+def every_transaction_has_an_outbox_event(cur: Cursor) -> dict[str, Any]:
+    """Proves the dual write was actually closed.
+
+    The outbox insert lives inside `append_transaction`, on the same cursor as
+    the entries, so a committed transaction without an event is impossible. This
+    check is what turns "impossible" into "verified" -- and it is the check that
+    would catch someone helpfully refactoring the emit out into its own
+    transaction.
+    """
+    return _check(
+        "every_transaction_has_an_outbox_event",
+        "every committed transaction produced a transaction.posted event",
+        cur,
+        """
+        SELECT t.id AS transaction_id, t.seq
+          FROM transactions t
+         WHERE NOT EXISTS (
+                SELECT 1 FROM outbox o
+                 WHERE o.event_type = 'transaction.posted'
+                   AND o.payload ->> 'transaction_id' = t.id::text
+               )
+        """,
+    )
+
+
 def hash_chain_intact(cur: Cursor) -> dict[str, Any]:
     result = chain_check_for_reconciliation(cur)
     return {
@@ -322,6 +347,7 @@ CHECKS: list[Callable[[Cursor], dict[str, Any]]] = [
     captured_holds_link_to_real_transactions,
     non_captured_holds_have_no_transaction,
     every_transaction_has_an_authorization,
+    every_transaction_has_an_outbox_event,
     hash_chain_intact,
 ]
 

@@ -30,6 +30,7 @@ from ledger.errors import (
 )
 from ledger.hashing import GENESIS_PREV_HASH, HashableEntry, transaction_hash
 from ledger.money import validate_amount, validate_currency
+from ledger.services import outbox
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,7 +357,7 @@ def append_transaction(
 
     _bump_balance_cache(cur, postings)
 
-    return {
+    result = {
         "id": tx_row["id"],
         "seq": tx_row["seq"],
         "description": tx_row["description"],
@@ -365,6 +366,33 @@ def append_transaction(
         "tx_hash": bytes(tx_row["tx_hash"]).hex(),
         "entries": entries,
     }
+
+    # The outbox insert happens here, on the same cursor, inside the same
+    # transaction as the entries -- not in the callers. Every entry this service
+    # writes goes through this function, so putting the emit here makes "a
+    # committed transaction always has an event" structurally true rather than a
+    # rule each new call site has to remember. GET /reconciliation checks it.
+    outbox.emit(
+        cur,
+        outbox.EVENT_TRANSACTION_POSTED,
+        {
+            "transaction_id": str(transaction_id),
+            "seq": tx_row["seq"],
+            "description": description,
+            "created_at": created_at.isoformat(),
+            "tx_hash": result["tx_hash"],
+            "entries": [
+                {
+                    "account_id": str(entry["account_id"]),
+                    "amount_minor": entry["amount_minor"],
+                    "currency": entry["currency"],
+                }
+                for entry in entries
+            ],
+        },
+    )
+
+    return result
 
 
 def _bump_balance_cache(cur: Cursor, postings: list[Posting]) -> None:

@@ -44,6 +44,7 @@ from ledger.schemas import (
     HoldResponse,
     VoidHoldRequest,
 )
+from ledger.services import outbox
 from ledger.services.idempotency import Outcome, execute_once
 from ledger.services.posting import (
     Posting,
@@ -147,7 +148,9 @@ def create_hold(request: CreateHoldRequest, idempotency_key: UUID) -> Outcome:
             ),
         )
         cur.execute(_HOLD_SELECT, (hold_id,))
-        return _serialise(cur.fetchone())  # type: ignore[arg-type]
+        body = _serialise(cur.fetchone())  # type: ignore[arg-type]
+        outbox.emit(cur, outbox.EVENT_HOLD_CREATED, body)
+        return body
 
     return execute_once(
         key=idempotency_key,
@@ -233,7 +236,9 @@ def capture_hold(
         )
 
         cur.execute(_HOLD_SELECT, (hold_id,))
-        return _serialise(cur.fetchone())  # type: ignore[arg-type]
+        body = _serialise(cur.fetchone())  # type: ignore[arg-type]
+        outbox.emit(cur, outbox.EVENT_HOLD_CAPTURED, body)
+        return body
 
     return execute_once(
         key=idempotency_key,
@@ -258,7 +263,9 @@ def void_hold(
         _lock_pending_hold(cur, hold_id, allow_lapsed=True)
         _transition(cur, hold_id, new_status="voided")
         cur.execute(_HOLD_SELECT, (hold_id,))
-        return _serialise(cur.fetchone())  # type: ignore[arg-type]
+        body = _serialise(cur.fetchone())  # type: ignore[arg-type]
+        outbox.emit(cur, outbox.EVENT_HOLD_VOIDED, {**body, "reason": request.reason})
+        return body
 
     return execute_once(
         key=idempotency_key,
@@ -407,7 +414,21 @@ def sweep_expired_holds(batch_size: int = 1000) -> int:
                       LIMIT %s
                         FOR UPDATE SKIP LOCKED
                    )
+            RETURNING id, account_id, amount_minor, currency, status,
+                      expires_at, captured_transaction_id, created_at
             """,
             (batch_size,),
         )
-        return cur.rowcount
+        expired = cur.fetchall()
+
+        # Events for the sweep go in the same transaction as the sweep itself,
+        # for the same reason ledger events do: a background job is not exempt
+        # from the dual-write problem.
+        for row in expired:
+            outbox.emit(
+                cur,
+                outbox.EVENT_HOLD_EXPIRED,
+                _serialise({**row, "captured_amount_minor": None}),
+            )
+
+        return len(expired)

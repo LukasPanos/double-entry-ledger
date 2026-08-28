@@ -39,6 +39,7 @@ from ledger.services import accounts as accounts_service
 from ledger.services import fx as fx_service
 from ledger.services import holds as holds_service
 from ledger.services import integrity as integrity_service
+from ledger.services import outbox as outbox_service
 from ledger.services import reconciliation as reconciliation_service
 from ledger.services import transactions as transactions_service
 from ledger.services.idempotency import Outcome
@@ -70,6 +71,37 @@ async def _hold_expiry_worker() -> None:
         await asyncio.sleep(settings.hold_expiry_poll_seconds)
 
 
+async def _outbox_relay_worker() -> None:
+    """Deliver queued events, forever.
+
+    Unlike the hold sweeper, this worker *is* load-bearing: nothing else
+    delivers webhooks. What it is not is load-bearing for **correctness** -- the
+    ledger is already committed and consistent whether or not anything is
+    listening. So a failure here degrades notifications, never the books, which
+    is the whole reason the outbox sits between them.
+    """
+    settings = get_settings()
+    while True:
+        try:
+            stats = await asyncio.to_thread(outbox_service.relay_once)
+            if stats.claimed:
+                log.info(
+                    "outbox: claimed=%d delivered=%d retried=%d dead=%d",
+                    stats.claimed,
+                    stats.delivered,
+                    stats.retried,
+                    stats.dead,
+                )
+                if stats.delivered == stats.claimed:
+                    # More may be waiting; do not sleep on a clean sweep.
+                    continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("outbox relay pass failed; will retry")
+        await asyncio.sleep(settings.outbox_poll_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_pool()
@@ -78,6 +110,8 @@ async def lifespan(app: FastAPI):
     workers: list[asyncio.Task[None]] = []
     if settings.run_hold_expiry_worker:
         workers.append(asyncio.create_task(_hold_expiry_worker()))
+    if settings.run_outbox_relay and settings.webhook_url:
+        workers.append(asyncio.create_task(_outbox_relay_worker()))
 
     try:
         yield
@@ -257,3 +291,11 @@ def get_reconciliation() -> Any:
 @app.get("/integrity", response_model=IntegrityReport)
 def get_integrity() -> Any:
     return integrity_service.verify_chain()
+
+
+@app.get("/outbox/stats")
+def get_outbox_stats() -> Any:
+    """Delivery backlog, by status, plus the age of the oldest undelivered
+    event. Not in the specified API surface, but a relay you cannot see the lag
+    of is a relay you find out about from the consumer."""
+    return outbox_service.stats()
