@@ -12,8 +12,9 @@ from uuid import UUID
 
 from psycopg import Cursor
 
-from ledger.db import READ_COMMITTED, transaction
-from ledger.errors import AccountNotFound, TransactionNotFound
+from ledger.config import get_settings
+from ledger.db import STRATEGY_ISOLATION, transaction
+from ledger.errors import AccountNotFound, TransactionNotFound, ValidationFailed
 from ledger.schemas import CreateTransactionRequest, TransactionResponse
 from ledger.services.idempotency import Outcome, execute_once
 from ledger.services.posting import (
@@ -21,14 +22,47 @@ from ledger.services.posting import (
     append_transaction,
     assert_currencies_match,
     assert_no_overdraft,
+    load_accounts,
     lock_accounts,
     validate_postings,
 )
 
 
+def acquire_accounts(
+    cur: Cursor, account_ids: list[UUID], strategy: str
+) -> dict[UUID, Any]:
+    """Get the accounts a write touches, under the configured strategy.
+
+    This one function is the entire difference between the two concurrency
+    strategies. Everything downstream -- the overdraft check, the append, the
+    balance cache -- is byte-for-byte identical, which is what makes the Phase 4
+    benchmark a comparison of concurrency control rather than of two
+    implementations that happen to differ in several ways at once.
+
+    pessimistic: SELECT ... FOR UPDATE in ascending account id order, at READ
+        COMMITTED. Conflicting writers queue. Nobody's work is thrown away, and
+        deterministic ordering means no deadlock.
+
+    optimistic: a plain SELECT at SERIALIZABLE. Nothing queues; the database
+        detects conflicting interleavings and aborts one side with 40001, and
+        `run_in_transaction` replays it. Cheaper when contention is rare,
+        expensive when it is not, because a losing transaction discards work it
+        had already done.
+    """
+    if strategy == "pessimistic":
+        return lock_accounts(cur, account_ids)
+    if strategy == "optimistic":
+        return load_accounts(cur, account_ids)
+    raise ValidationFailed(f"unknown concurrency strategy {strategy!r}")
+
+
 def post_transaction(
-    request: CreateTransactionRequest, idempotency_key: UUID
+    request: CreateTransactionRequest,
+    idempotency_key: UUID,
+    *,
+    strategy: str | None = None,
 ) -> Outcome:
+    strategy = strategy or get_settings().concurrency_strategy
     postings = [
         Posting(
             account_id=e.account_id,
@@ -45,10 +79,12 @@ def post_transaction(
     validate_postings(postings)
 
     def work(cur: Cursor) -> dict[str, Any]:
-        # Lock, then check, then write -- all inside one transaction. The lock is
-        # what makes the check meaningful: without it, two concurrent debits
-        # could both read a sufficient available balance and both commit.
-        accounts = lock_accounts(cur, [p.account_id for p in postings])
+        # Acquire, then check, then write -- all inside one transaction. Under
+        # the pessimistic strategy the acquire is a lock, which is what makes the
+        # check meaningful: without it, two concurrent debits could both read a
+        # sufficient available balance and both commit. Under the optimistic
+        # strategy nothing is locked and the database aborts one of them instead.
+        accounts = acquire_accounts(cur, [p.account_id for p in postings], strategy)
         assert_currencies_match(postings, accounts)
         assert_no_overdraft(cur, postings, accounts)
         tx = append_transaction(
@@ -67,7 +103,7 @@ def post_transaction(
         fingerprint=request.fingerprint(),
         status_code=201,
         work=work,
-        isolation=READ_COMMITTED,
+        isolation=STRATEGY_ISOLATION[strategy],
     )
 
 

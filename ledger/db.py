@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -28,6 +29,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from ledger.config import get_settings
+from ledger.errors import RetriesExhausted
 
 log = logging.getLogger("ledger.db")
 
@@ -37,10 +39,26 @@ T = TypeVar("T")
 # (correctness comes from row locks), SERIALIZABLE for the optimistic one
 # (correctness comes from the database aborting conflicting transactions).
 READ_COMMITTED = "READ COMMITTED"
+REPEATABLE_READ = "REPEATABLE READ"
 SERIALIZABLE = "SERIALIZABLE"
 
-# SQLSTATEs worth retrying. 40001 serialization_failure, 40P01 deadlock_detected.
-RETRYABLE_SQLSTATES = frozenset({"40001", "40P01"})
+#: Which isolation level each concurrency strategy needs (Phase 4).
+#:
+#: The pessimistic strategy takes explicit row locks, so READ COMMITTED is
+#: enough -- the locks, not the snapshot, are what serialise conflicting writers.
+#: The optimistic strategy takes no locks at all, so it needs the database to
+#: detect the conflicts for it, which means SERIALIZABLE and a retry loop.
+STRATEGY_ISOLATION = {
+    "pessimistic": READ_COMMITTED,
+    "optimistic": SERIALIZABLE,
+}
+
+# Unique constraints whose violation means "another writer appended to the hash
+# chain first". Retrying is the correct response; see conflict_kind() for why
+# this is a narrow allowlist rather than "retry all unique violations".
+CHAIN_CONFLICT_CONSTRAINTS = frozenset(
+    {"transactions_prev_hash_key", "transactions_tx_hash_key"}
+)
 
 _pool: ConnectionPool | None = None
 
@@ -59,7 +77,12 @@ def _configure_connection(conn: psycopg.Connection) -> None:
         cur.execute("SET TIME ZONE 'UTC'")
 
 
-def init_pool(dsn: str | None = None) -> ConnectionPool:
+def init_pool(
+    dsn: str | None = None,
+    *,
+    min_size: int | None = None,
+    max_size: int | None = None,
+) -> ConnectionPool:
     global _pool
     if _pool is not None:
         return _pool
@@ -67,8 +90,8 @@ def init_pool(dsn: str | None = None) -> ConnectionPool:
     settings = get_settings()
     _pool = ConnectionPool(
         conninfo=dsn or settings.database_url,
-        min_size=settings.pool_min_size,
-        max_size=settings.pool_max_size,
+        min_size=min_size if min_size is not None else settings.pool_min_size,
+        max_size=max_size if max_size is not None else settings.pool_max_size,
         configure=_configure_connection,
         kwargs={"row_factory": dict_row},
         open=True,
@@ -127,11 +150,36 @@ def transaction(
             cur.close()
 
 
+def conflict_kind(exc: BaseException) -> str | None:
+    """Classify an exception as a retryable conflict, or None if it is not.
+
+    The return value is the *reason*, not just a boolean, because Phase 4 needs
+    to attribute wasted work: an optimistic run that retries a lot is only
+    interesting if you can say whether it was fighting over account balances or
+    over the hash chain.
+    """
+    if not isinstance(exc, psycopg.Error):
+        return None
+
+    sqlstate = getattr(exc, "sqlstate", None)
+    if sqlstate == "40001":
+        return "serialization_failure"
+    if sqlstate == "40P01":
+        return "deadlock"
+    if sqlstate == "23505":
+        # A unique violation is normally a client error and must NOT be retried
+        # -- retrying an idempotency-key collision would defeat the entire point
+        # of Phase 2. Only the hash-chain constraints are retryable, because
+        # losing that race means "somebody else appended first", which is
+        # resolved by reading the new head and trying again.
+        constraint = getattr(exc.diag, "constraint_name", None)
+        if constraint in CHAIN_CONFLICT_CONSTRAINTS:
+            return "chain_conflict"
+    return None
+
+
 def is_retryable(exc: BaseException) -> bool:
-    return (
-        isinstance(exc, psycopg.Error)
-        and getattr(exc, "sqlstate", None) in RETRYABLE_SQLSTATES
-    )
+    return conflict_kind(exc) is not None
 
 
 def run_in_transaction(
@@ -152,32 +200,62 @@ def run_in_transaction(
     if max_retries is None:
         max_retries = settings.max_retries
 
-    last: BaseException | None = None
-
     for attempt in range(max_retries + 1):
         try:
             with transaction(isolation=isolation, read_only=read_only) as cur:
                 return work(cur)
         except BaseException as exc:  # noqa: BLE001 -- re-raised below
-            if not is_retryable(exc) or attempt == max_retries:
+            kind = conflict_kind(exc)
+            if kind is None:
                 raise
-            last = exc
-            # Full jitter exponential backoff. Without jitter, two conflicting
-            # writers retry in lockstep and keep colliding.
+            if attempt == max_retries:
+                RETRIES.record(f"{kind}:exhausted")
+                raise RetriesExhausted(
+                    f"gave up after {max_retries} retries on {kind}",
+                    conflict=kind,
+                    attempts=max_retries + 1,
+                ) from exc
+            RETRIES.record(kind)
+            # Full jitter exponential backoff. Without jitter, conflicting
+            # writers retry in lockstep and collide again on the same beat.
             delay = min(
                 settings.retry_max_delay_seconds,
                 settings.retry_base_delay_seconds * (2**attempt),
             )
             time.sleep(random.uniform(0, delay))
-            TX_RETRIES.append(getattr(exc, "sqlstate", "?"))
 
-    raise AssertionError("unreachable") from last
+    raise AssertionError("unreachable")
 
 
-# Retry counter, read by the load test to report how much work the optimistic
-# strategy threw away. A plain list because appends are atomic under the GIL and
-# the load test only ever reads it after joining its threads.
-TX_RETRIES: list[str] = []
+class RetryCounter:
+    """Tally of conflicts by reason, for the Phase 4 benchmark.
+
+    Not metrics infrastructure -- just enough to answer "how much work did the
+    optimistic strategy throw away, and what was it fighting over".
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counts: dict[str, int] = {}
+
+    def record(self, kind: str) -> None:
+        with self._lock:
+            self._counts[kind] = self._counts.get(kind, 0) + 1
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._counts)
+
+    def total(self) -> int:
+        with self._lock:
+            return sum(self._counts.values())
+
+    def reset(self) -> None:
+        with self._lock:
+            self._counts.clear()
+
+
+RETRIES = RetryCounter()
 
 
 # ---------------------------------------------------------------- migration --

@@ -175,6 +175,24 @@ def expire_hold_now(hold_id: UUID) -> None:
         )
 
 
+def corrupt(sql: str, params: Any = None) -> None:
+    """Run a statement with every guard switched off.
+
+    Used to manufacture the broken states that /reconciliation and /integrity
+    are supposed to detect. A reconciliation suite that has never been shown to
+    fail is not evidence of anything, so the tests forge damage on purpose.
+
+    `session_replication_role = 'replica'` suppresses the append-only triggers,
+    the deferred zero-sum constraint triggers and foreign key checks for this
+    transaction only, and takes no table locks. This is the same door a database
+    administrator has, which is exactly why tamper *evidence* exists alongside
+    tamper *prevention*.
+    """
+    with db.transaction() as cur:
+        cur.execute("SET LOCAL session_replication_role = 'replica'")
+        cur.execute(sql, params)
+
+
 def derived_balance(account_id: UUID) -> int:
     with db.transaction(read_only=True) as cur:
         cur.execute(

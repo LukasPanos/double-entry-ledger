@@ -1,0 +1,404 @@
+{
+  "postgres": "16.15 (Homebrew)",
+  "transactions_per_point": 600,
+  "levels": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "results": [
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 1,
+      "transactions": 600,
+      "duration_s": 0.5277,
+      "throughput_tps": 1137.0,
+      "p50_ms": 0.83,
+      "p95_ms": 1.09,
+      "p99_ms": 1.43,
+      "max_ms": 5.73,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 2,
+      "transactions": 600,
+      "duration_s": 0.457,
+      "throughput_tps": 1313.0,
+      "p50_ms": 1.49,
+      "p95_ms": 1.78,
+      "p99_ms": 2.17,
+      "max_ms": 3.03,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 4,
+      "transactions": 600,
+      "duration_s": 0.4869,
+      "throughput_tps": 1232.4,
+      "p50_ms": 3.2,
+      "p95_ms": 3.94,
+      "p99_ms": 4.09,
+      "max_ms": 4.71,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 8,
+      "transactions": 600,
+      "duration_s": 0.4398,
+      "throughput_tps": 1364.3,
+      "p50_ms": 5.65,
+      "p95_ms": 6.83,
+      "p99_ms": 10.68,
+      "max_ms": 10.98,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 16,
+      "transactions": 600,
+      "duration_s": 0.4567,
+      "throughput_tps": 1313.9,
+      "p50_ms": 11.88,
+      "p95_ms": 13.46,
+      "p99_ms": 16.26,
+      "max_ms": 19.02,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "hot",
+      "concurrency": 32,
+      "transactions": 600,
+      "duration_s": 0.4984,
+      "throughput_tps": 1203.8,
+      "p50_ms": 25.76,
+      "p95_ms": 29.64,
+      "p99_ms": 31.86,
+      "max_ms": 37.13,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 1,
+      "transactions": 600,
+      "duration_s": 0.5022,
+      "throughput_tps": 1194.8,
+      "p50_ms": 0.82,
+      "p95_ms": 0.93,
+      "p99_ms": 1.06,
+      "max_ms": 6.78,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 2,
+      "transactions": 600,
+      "duration_s": 0.6163,
+      "throughput_tps": 973.6,
+      "p50_ms": 0.83,
+      "p95_ms": 0.95,
+      "p99_ms": 1.09,
+      "max_ms": 616.26,
+      "retries": {
+        "serialization_failure": 11
+      },
+      "retries_total": 11,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 4,
+      "transactions": 600,
+      "duration_s": 0.612,
+      "throughput_tps": 980.4,
+      "p50_ms": 0.8,
+      "p95_ms": 0.95,
+      "p99_ms": 9.59,
+      "max_ms": 611.95,
+      "retries": {
+        "serialization_failure": 53
+      },
+      "retries_total": 53,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 8,
+      "transactions": 600,
+      "duration_s": 0.7025,
+      "throughput_tps": 854.1,
+      "p50_ms": 0.83,
+      "p95_ms": 1.28,
+      "p99_ms": 398.78,
+      "max_ms": 674.5,
+      "retries": {
+        "serialization_failure": 119
+      },
+      "retries_total": 119,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 16,
+      "transactions": 600,
+      "duration_s": 0.8135,
+      "throughput_tps": 737.5,
+      "p50_ms": 0.83,
+      "p95_ms": 3.94,
+      "p99_ms": 569.23,
+      "max_ms": 790.32,
+      "retries": {
+        "serialization_failure": 217
+      },
+      "retries_total": 217,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "hot",
+      "concurrency": 32,
+      "transactions": 600,
+      "duration_s": 1.1327,
+      "throughput_tps": 529.7,
+      "p50_ms": 0.97,
+      "p95_ms": 351.41,
+      "p99_ms": 877.06,
+      "max_ms": 1132.67,
+      "retries": {
+        "serialization_failure": 473
+      },
+      "retries_total": 473,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 1,
+      "transactions": 600,
+      "duration_s": 0.4784,
+      "throughput_tps": 1254.3,
+      "p50_ms": 0.77,
+      "p95_ms": 0.86,
+      "p99_ms": 1.31,
+      "max_ms": 5.16,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 2,
+      "transactions": 600,
+      "duration_s": 0.5977,
+      "throughput_tps": 1003.8,
+      "p50_ms": 0.8,
+      "p95_ms": 1.1,
+      "p99_ms": 11.75,
+      "max_ms": 448.05,
+      "retries": {
+        "chain_conflict": 39
+      },
+      "retries_total": 39,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 4,
+      "transactions": 600,
+      "duration_s": 0.7016,
+      "throughput_tps": 855.2,
+      "p50_ms": 0.97,
+      "p95_ms": 8.99,
+      "p99_ms": 64.22,
+      "max_ms": 587.98,
+      "retries": {
+        "chain_conflict": 167
+      },
+      "retries_total": 167,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 8,
+      "transactions": 600,
+      "duration_s": 0.7833,
+      "throughput_tps": 766.0,
+      "p50_ms": 1.14,
+      "p95_ms": 31.34,
+      "p99_ms": 197.81,
+      "max_ms": 661.97,
+      "retries": {
+        "chain_conflict": 398
+      },
+      "retries_total": 398,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 16,
+      "transactions": 600,
+      "duration_s": 1.0972,
+      "throughput_tps": 546.9,
+      "p50_ms": 1.14,
+      "p95_ms": 89.83,
+      "p99_ms": 678.77,
+      "max_ms": 862.02,
+      "retries": {
+        "chain_conflict": 462
+      },
+      "retries_total": 462,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 32,
+      "transactions": 600,
+      "duration_s": 1.4977,
+      "throughput_tps": 400.6,
+      "p50_ms": 1.64,
+      "p95_ms": 492.31,
+      "p99_ms": 960.13,
+      "max_ms": 1207.96,
+      "retries": {
+        "chain_conflict": 1039
+      },
+      "retries_total": 1039,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 1,
+      "transactions": 600,
+      "duration_s": 0.497,
+      "throughput_tps": 1207.1,
+      "p50_ms": 0.82,
+      "p95_ms": 0.93,
+      "p99_ms": 1.32,
+      "max_ms": 1.6,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 2,
+      "transactions": 600,
+      "duration_s": 0.5267,
+      "throughput_tps": 1139.1,
+      "p50_ms": 0.81,
+      "p95_ms": 0.95,
+      "p99_ms": 1.14,
+      "max_ms": 175.03,
+      "retries": {
+        "serialization_failure": 29
+      },
+      "retries_total": 29,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 4,
+      "transactions": 600,
+      "duration_s": 0.5204,
+      "throughput_tps": 1152.9,
+      "p50_ms": 0.79,
+      "p95_ms": 0.95,
+      "p99_ms": 28.61,
+      "max_ms": 431.15,
+      "retries": {
+        "serialization_failure": 58
+      },
+      "retries_total": 58,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 8,
+      "transactions": 600,
+      "duration_s": 0.6808,
+      "throughput_tps": 881.3,
+      "p50_ms": 0.82,
+      "p95_ms": 1.36,
+      "p99_ms": 325.45,
+      "max_ms": 581.04,
+      "retries": {
+        "serialization_failure": 137
+      },
+      "retries_total": 137,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 16,
+      "transactions": 600,
+      "duration_s": 0.7483,
+      "throughput_tps": 801.8,
+      "p50_ms": 0.86,
+      "p95_ms": 1.6,
+      "p99_ms": 667.83,
+      "max_ms": 747.76,
+      "retries": {
+        "serialization_failure": 181
+      },
+      "retries_total": 181,
+      "failures": {}
+    },
+    {
+      "strategy": "optimistic",
+      "workload": "disjoint",
+      "concurrency": 32,
+      "transactions": 600,
+      "duration_s": 1.1001,
+      "throughput_tps": 545.4,
+      "p50_ms": 0.86,
+      "p95_ms": 389.68,
+      "p99_ms": 782.05,
+      "max_ms": 877.84,
+      "retries": {
+        "serialization_failure": 453
+      },
+      "retries_total": 453,
+      "failures": {}
+    }
+  ]
+}

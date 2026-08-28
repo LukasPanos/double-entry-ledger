@@ -28,11 +28,15 @@ from ledger.schemas import (
     CreateTransactionRequest,
     EntriesPage,
     HoldResponse,
+    IntegrityReport,
+    ReconciliationReport,
     TransactionResponse,
     VoidHoldRequest,
 )
 from ledger.services import accounts as accounts_service
 from ledger.services import holds as holds_service
+from ledger.services import integrity as integrity_service
+from ledger.services import reconciliation as reconciliation_service
 from ledger.services import transactions as transactions_service
 from ledger.services.idempotency import Outcome
 
@@ -226,3 +230,19 @@ def health() -> dict[str, str]:
     with db.transaction(read_only=True) as cur:
         cur.execute("SELECT 1")
     return {"status": "ok"}
+
+
+# ------------------------------------------------------------------- ops -----
+
+
+@app.get("/reconciliation", response_model=ReconciliationReport)
+def get_reconciliation() -> Any:
+    """Run every invariant check and report. 200 whether or not it passes: the
+    request succeeded, and `ok` carries the answer. A 500 here would mean the
+    check itself broke, which is a different thing from the ledger being wrong."""
+    return reconciliation_service.reconcile()
+
+
+@app.get("/integrity", response_model=IntegrityReport)
+def get_integrity() -> Any:
+    return integrity_service.verify_chain()

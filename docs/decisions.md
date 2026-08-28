@@ -502,3 +502,220 @@ time.** Whoever can capture a hold chooses where the money lands. Putting
 `destination_account_id` on `holds` would fix that and is the stronger design for
 a real system; it was not chosen because it changes the specified schema and
 forecloses the fee-split case without a second transaction.
+
+---
+
+## Phase 4 — Concurrency, two ways
+
+### 4.1 The strategies differ in exactly one function
+
+`acquire_accounts()` in `ledger/services/transactions.py` is the whole
+difference:
+
+| | pessimistic | optimistic |
+|---|---|---|
+| isolation | READ COMMITTED | SERIALIZABLE |
+| account read | `SELECT … FOR UPDATE` ordered by id | plain `SELECT` |
+| conflict handling | writers queue | DB aborts one, we replay it |
+
+Everything downstream — the overdraft check, the append, the balance cache, the
+hash chain — is byte-for-byte identical. That was a deliberate constraint on the
+design: if the two paths diverged in several places, the benchmark would be
+comparing two implementations rather than two concurrency-control disciplines,
+and no conclusion could be drawn.
+
+Every correctness test in `test_phase4_concurrency.py` is parameterised over both
+strategies, because comparing the performance of a correct implementation against
+a subtly broken one is worthless.
+
+### 4.2 `ORDER BY` in the lock query is load-bearing, and it is asserted
+
+`lock_accounts` sorts account ids and relies on Postgres putting the `LockRows`
+node at the *top* of the plan, so rows are locked in the order the plan emits
+them. Without a single global order, transaction A holding account 1 and wanting
+2 while B holds 2 and wants 1 is a deadlock.
+
+`test_the_lock_query_locks_rows_in_sorted_order` asserts the plan shape via
+EXPLAIN rather than trusting the documentation. Worth recording: the first
+version of that test asserted a `Sort` node and **broke** once the test database
+had enough rows for the planner to prefer an ordered index scan on
+`account_balances_pkey` instead. Both shapes are correct — ordering is
+established below `LockRows` either way — so the test now asserts the invariant
+(LockRows is the root, ordering comes from a Sort *or* an ordered pkey scan)
+rather than one incidental plan.
+
+### 4.3 Only chain-conflict unique violations are retryable
+
+`conflict_kind()` returns the *reason* a transaction can be retried, not a
+boolean. `40001` and `40P01` are always retryable. `23505` is retryable **only**
+when `diag.constraint_name` is one of the hash-chain constraints.
+
+This is the most dangerous place in the codebase to be sloppy. A blanket "retry
+all unique violations" would retry an idempotency-key collision, which would
+defeat Phase 2 entirely — the retry would find the key already claimed and could
+double-process. `test_idempotency_collisions_are_never_retried` provokes a real
+collision and asserts `conflict_kind()` returns `None` for it.
+
+Returning the reason rather than a boolean is what makes 4.5 possible.
+
+### 4.4 What the benchmark actually measures
+
+The driver calls the service layer directly from a thread pool: no HTTP, no
+uvicorn, no event loop. The question is about database contention, and a web
+stack in the path would add scheduling noise unrelated to row locks. These are
+therefore **not** end-to-end API latencies; they are transaction latencies, which
+is the part the strategy choice controls. Stated on the chart itself so the
+number cannot be misquoted.
+
+The ledger is truncated and rebuilt before every configuration. Without that,
+runs later in the sweep would carry every earlier run's entries, and the
+per-payer `SUM(entries)` in the overdraft check would get steadily more
+expensive — so whichever strategy was measured last would look worse for a
+reason that has nothing to do with the strategy. Warmup transactions run outside
+the timed window for the same reason: first-call overhead would otherwise land
+entirely in the concurrency-1 column.
+
+`assert_reconciled()` runs after every single configuration. A benchmark that
+leaves the books wrong has measured nothing worth knowing.
+
+### 4.5 The result, and the finding I did not expect
+
+Measured on PostgreSQL 16, 600 transactions per point (`docs/hot-account-benchmark.json`):
+
+| workload | strategy | 1 writer | 32 writers | p95 @ 32 | conflicts @ 32 |
+|---|---|---|---|---|---|
+| shared hot account | pessimistic | 1140 tps | **1204 tps** | 30 ms | **0** |
+| shared hot account | optimistic | 1195 tps | 530 tps | 351 ms | 473 serialization failures |
+| no shared account | pessimistic | 1254 tps | 401 tps | 492 ms | 1039 chain conflicts |
+| no shared account | optimistic | 1207 tps | 545 tps | 390 ms | 453 serialization failures |
+
+Pessimistic locking wins the hot-account case decisively: 2.3× the throughput and
+12× better p95. That much was expected — a queue does no wasted work, whereas
+every optimistic abort throws away a transaction that had already done its reads.
+The bimodal latency is the visible signature of that: optimistic p50 stays at
+~1 ms while p95 blows out to 351 ms, because the winners are fast and the losers
+pay for a full replay.
+
+The unexpected result is in the last two rows. **Pessimistic throughput on the
+hot account (1204 tps) is three times its throughput with no shared account at
+all (401 tps).** Sharing a row made it faster.
+
+The reason is 1.7. Appending to the hash chain is a global serialization point:
+every writer reads the same chain head and `UNIQUE(prev_hash)` rejects all but
+one. In the hot-account workload the row lock on the shared fee account
+*incidentally orders the chain appends too* — writers queue on the account, so
+they reach the chain one at a time and never collide. The retry counter proves it:
+**zero conflicts of any kind, at every concurrency level.** Remove the shared
+account and nothing imposes that order, so the same strategy records 1039 chain
+conflicts and loses 67% of its throughput.
+
+This is why `conflict_kind()` returns a reason. Throughput alone cannot tell you
+*what* the writers were fighting over; the per-kind breakdown can, and it turns a
+surprising number into an explained one.
+
+The honest reading: this service has two serialization points, the hot account
+row and the chain head, and the benchmark measures both. The chain is the harder
+ceiling of the two, because unlike the account it cannot be sharded away — it is
+one linked list by construction. The mitigation is 4.6.
+
+### 4.6 What I would change to raise the ceiling
+
+Not built, because Phase 4 asked for two strategies and this would be a third,
+but this is where the next work goes:
+
+1. **Advisory lock around the chain append.** `pg_advisory_xact_lock` converts
+   chain conflicts into queueing, which the numbers above show is strictly
+   cheaper than aborting. It does not raise the ceiling — still one transaction
+   per chain position — but it removes the wasted work. I left it out of Phase 1
+   precisely because it would have masked the per-account contention this
+   benchmark exists to isolate.
+2. **Periodic sealing instead of per-transaction chaining.** Hash batches of
+   transactions on a timer rather than chaining each one. Tamper evidence becomes
+   coarser — you learn which batch was altered, not which transaction — in
+   exchange for removing the global serialization point entirely. This is the
+   real fix, and it is a genuine trade of evidence granularity for throughput.
+3. **Conflict-free balance cache.** The cached balance row is what the optimistic
+   strategy fights over. Replacing the running total with append-only deltas
+   aggregated lazily would remove that conflict for credit-only accounts (a fee
+   account is never debited, so it needs no overdraft check and therefore no
+   serialized read).
+
+### 4.7 Reconciliation runs in one snapshot
+
+The whole report is assembled inside a single `REPEATABLE READ READ ONLY`
+transaction.
+
+Rejected: a check-per-transaction loop.
+
+Reason: with a snapshot per check, a transaction committing between the
+global-sum check and the per-account check would make the two disagree, and the
+report would fail on a perfectly healthy ledger. A reconciliation tool that
+produces false alarms under load is worse than no tool, because people learn to
+ignore it. Read-only at REPEATABLE READ also means the report can never abort and
+never blocks a writer.
+
+`test_reconciliation_does_not_cry_wolf_during_concurrent_writes` runs
+reconciliation in a loop for three seconds while a writer hammers the ledger, and
+asserts every report passes.
+
+### 4.8 Every check is a query that must return zero rows
+
+Rather than computing a number and comparing it to another number. "This query
+returns nothing" has exactly one passing state and needs nobody to decide what
+"close enough" means. When a check fails it returns the offending rows, so the
+report names the account or transaction rather than just asserting that something
+somewhere is wrong.
+
+**Every check is tested against a deliberately corrupted database.** A
+reconciliation suite that has only ever been run against a healthy ledger might
+be ten queries that can never fail. `tests/factories.corrupt()` forges damage
+with `session_replication_role = 'replica'`, which is the same door a database
+administrator has.
+
+One check turned out to be unprovokable, and that is recorded rather than hidden:
+`non_captured_holds_have_no_transaction` cannot be made to fail, because
+`session_replication_role` suppresses *triggers* but a CHECK constraint is not a
+trigger, so `holds_capture_link` refuses the write anyway. The check is kept — it
+costs one indexed scan, and if a future migration relaxes the CHECK, the report is
+where that regression should surface. The test asserts the database's refusal
+instead.
+
+### 4.9 A bug the corruption tests found
+
+`SUM(bigint)` is `numeric` in Postgres, which psycopg returns as `Decimal`. The
+first version of the report's row serialiser fell through to `str()` for anything
+that was not an `int`, `float` or `bool` — so every monetary total in a failure
+report came out as a JSON *string*: `"total_minor": "1000000"`.
+
+Nothing in the happy path noticed, because a passing check has no failure rows.
+It only surfaced once the tests started asserting on the *contents* of a failure.
+The fix converts `Decimal` explicitly.
+
+The SQL deliberately still does not cast the sums back to `bigint`: a sum over
+many rows can exceed int64 even when every individual row fits, and an overflow
+error inside the reconciliation path would take out the tool you use to diagnose
+problems. The widening stays; the conversion happens in Python, where the values
+are known to be whole numbers of minor units.
+
+### 4.10 `/integrity` arrived early
+
+It belongs to Phase 7, but one of the reconciliation checks the spec requires is
+"hash chain intact", so the chain walk had to exist now. Phase 7 adds the chaos
+runner and the Hypothesis properties, not the endpoint.
+
+Two things about the walk that needed thought:
+
+* **`seq` gaps are not breaks.** `seq` is a `bigserial` and a rolled-back
+  transaction still consumes its value, so checking for contiguity would report a
+  failure every time a request was rejected. The walk only compares adjacent
+  committed rows.
+* **`seq` order cannot disagree with chain order.** For B to store A's hash as
+  its `prev_hash`, B must have read A's committed row, so A called `nextval`
+  first and `A.seq < B.seq`. Sorting by `seq` therefore reconstructs the chain
+  exactly.
+
+`test_editing_a_hashed_field_breaks_the_chain` is the one that matters most: it
+shifts a `created_at` by a day, which is hashed but affects no balance. Every
+other reconciliation check still passes and only `hash_chain_intact` fails —
+which is precisely the attack tamper evidence exists to catch, an edit that
+leaves the books adding up.
