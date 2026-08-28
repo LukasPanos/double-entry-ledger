@@ -218,18 +218,61 @@ class EntriesPage(Strict):
 # ---------------------------------------------------------------------- fx ---
 
 
-class FxConvertRequest(Strict):
+class FxConvertRequest(IdempotentRequest):
     from_account_id: UUID
     to_account_id: UUID
     # Amount debited from the source account, in its own minor units.
     sell_amount_minor: PositiveAmountMinor
-    # Amount credited to the destination account, in its minor units. The
-    # caller states both legs explicitly; see ledger/services/fx.py for why the
-    # service does not compute one from a rate.
+    # Amount credited to the destination account, in its minor units. The caller
+    # states both legs explicitly; see ledger/services/fx.py for why the service
+    # does not compute one from a rate.
     buy_amount_minor: PositiveAmountMinor
-    # What the platform keeps, denominated in the sell currency.
+    # What the platform keeps, denominated in the SELL currency. Must be strictly
+    # less than sell_amount_minor -- a conversion that is entirely spread converts
+    # nothing.
     spread_minor: StrictInt = Field(default=0, ge=0, le=INT64_MAX)
     description: str = Field(default="fx conversion", min_length=1, max_length=500)
+
+    def fingerprint(self) -> dict[str, Any]:
+        return {
+            "op": "fx_convert",
+            "from_account_id": str(self.from_account_id),
+            "to_account_id": str(self.to_account_id),
+            "sell_amount_minor": self.sell_amount_minor,
+            "buy_amount_minor": self.buy_amount_minor,
+            "spread_minor": self.spread_minor,
+            "description": self.description,
+        }
+
+
+class FxConvertResponse(Strict):
+    transaction_id: UUID
+    seq: int
+    created_at: datetime
+    tx_hash: str
+
+    from_account_id: UUID
+    to_account_id: UUID
+    sell_currency: str
+    buy_currency: str
+
+    sell_amount_minor: int
+    spread_minor: int
+    # sell_amount_minor - spread_minor: what actually reached the liquidity pool.
+    converted_amount_minor: int
+    buy_amount_minor: int
+
+    liquidity_sell_account_id: UUID
+    liquidity_buy_account_id: UUID
+    revenue_account_id: UUID | None
+
+    # Display only, computed with Decimal and never used for arithmetic. The
+    # ledger's own numbers are all integers; this exists so a human reading the
+    # response can sanity-check the rate without doing minor-unit arithmetic.
+    effective_rate: str
+
+    entries: list[EntryResponse]
+    replayed: bool = False
 
 
 # --------------------------------------------------- ops / introspection ----

@@ -27,6 +27,8 @@ from ledger.schemas import (
     CreateHoldRequest,
     CreateTransactionRequest,
     EntriesPage,
+    FxConvertRequest,
+    FxConvertResponse,
     HoldResponse,
     IntegrityReport,
     ReconciliationReport,
@@ -34,6 +36,7 @@ from ledger.schemas import (
     VoidHoldRequest,
 )
 from ledger.services import accounts as accounts_service
+from ledger.services import fx as fx_service
 from ledger.services import holds as holds_service
 from ledger.services import integrity as integrity_service
 from ledger.services import reconciliation as reconciliation_service
@@ -220,6 +223,14 @@ def list_holds(
     status: Annotated[str | None, Query(pattern="^(pending|captured|voided|expired)$")] = None,
 ) -> Any:
     return holds_service.list_holds(account_id, status=status)
+
+
+# ---------------------------------------------------------------------- fx ---
+
+
+@app.post("/fx/convert", response_model=FxConvertResponse, status_code=201)
+def fx_convert(request: FxConvertRequest, key: IdempotencyKey) -> Any:
+    return _idempotent(fx_service.convert(request, key))
 
 
 # ------------------------------------------------------------------ health ---

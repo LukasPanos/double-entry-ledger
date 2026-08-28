@@ -63,6 +63,62 @@ def post_outcome(
     )
 
 
+def liquidity_account(currency: str = "USD") -> UUID:
+    return make_account(
+        currency=currency, type_="liquidity", name=f"Liquidity {currency}"
+    )
+
+
+def fx_world(currencies: tuple[str, ...] = ("USD", "CAD")) -> dict[str, Any]:
+    """A minimal multi-currency setup: system accounts for each currency, plus
+    one user account per currency, funded."""
+    world: dict[str, Any] = {"user": {}, "liquidity": {}, "revenue": {}, "settlement": {}}
+    for currency in currencies:
+        world["settlement"][currency] = settlement_account(currency)
+        world["revenue"][currency] = revenue_account(currency)
+        world["liquidity"][currency] = liquidity_account(currency)
+        world["user"][currency] = make_account(
+            currency=currency, name=f"user {currency}"
+        )
+        # The pools need inventory to sell out of, funded from settlement the
+        # same way a user is: money enters the system through one door only.
+        fund(world["liquidity"][currency], 10_000_000, currency)
+        fund(world["user"][currency], 1_000_000, currency)
+    return world
+
+
+def convert(
+    *,
+    from_account_id: UUID,
+    to_account_id: UUID,
+    sell_amount_minor: int,
+    buy_amount_minor: int,
+    spread_minor: int = 0,
+    key: UUID | None = None,
+):
+    from ledger.schemas import FxConvertRequest
+    from ledger.services import fx as fx_service
+
+    return fx_service.convert(
+        FxConvertRequest(
+            from_account_id=from_account_id,
+            to_account_id=to_account_id,
+            sell_amount_minor=sell_amount_minor,
+            buy_amount_minor=buy_amount_minor,
+            spread_minor=spread_minor,
+        ),
+        key or uuid4(),
+    )
+
+
+def totals_by_currency() -> dict[str, int]:
+    with db.transaction(read_only=True) as cur:
+        cur.execute(
+            "SELECT currency, SUM(amount_minor) AS total FROM entries GROUP BY currency"
+        )
+        return {row["currency"].strip(): int(row["total"]) for row in cur.fetchall()}
+
+
 def post(
     entries: list[tuple[UUID, int, str]],
     *,

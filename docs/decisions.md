@@ -584,21 +584,27 @@ Measured on PostgreSQL 16, 600 transactions per point (`docs/hot-account-benchma
 
 | workload | strategy | 1 writer | 32 writers | p95 @ 32 | conflicts @ 32 |
 |---|---|---|---|---|---|
-| shared hot account | pessimistic | 1140 tps | **1204 tps** | 30 ms | **0** |
-| shared hot account | optimistic | 1195 tps | 530 tps | 351 ms | 473 serialization failures |
-| no shared account | pessimistic | 1254 tps | 401 tps | 492 ms | 1039 chain conflicts |
-| no shared account | optimistic | 1207 tps | 545 tps | 390 ms | 453 serialization failures |
+| shared hot account | pessimistic | 1070 tps | **1202 tps** | 32 ms | **0** |
+| shared hot account | optimistic | 1139 tps | 526 tps | 399 ms | 489 serialization failures |
+| no shared account | pessimistic | 1147 tps | 529 tps | 348 ms | 771 chain conflicts |
+| no shared account | optimistic | 1013 tps | 493 tps | 420 ms | 571 serialization failures |
 
 Pessimistic locking wins the hot-account case decisively: 2.3× the throughput and
 12× better p95. That much was expected — a queue does no wasted work, whereas
 every optimistic abort throws away a transaction that had already done its reads.
 The bimodal latency is the visible signature of that: optimistic p50 stays at
-~1 ms while p95 blows out to 351 ms, because the winners are fast and the losers
+~1 ms while p95 blows out to 399 ms, because the winners are fast and the losers
 pay for a full replay.
 
+Throughput on a single writer is a fair fight (1070 vs 1139, optimistic slightly
+ahead) because the pessimistic path does one extra thing: it joins
+`account_balances` to take the lock, where the optimistic path reads `accounts`
+alone. That cost is inherent to the strategy — you cannot lock a row you do not
+select — so it stays in the measurement rather than being normalised away.
+
 The unexpected result is in the last two rows. **Pessimistic throughput on the
-hot account (1204 tps) is three times its throughput with no shared account at
-all (401 tps).** Sharing a row made it faster.
+hot account (1202 tps) is 2.3× its throughput with no shared account at all
+(529 tps).** Sharing a row made it faster.
 
 The reason is 1.7. Appending to the hash chain is a global serialization point:
 every writer reads the same chain head and `UNIQUE(prev_hash)` rejects all but
@@ -606,8 +612,8 @@ one. In the hot-account workload the row lock on the shared fee account
 *incidentally orders the chain appends too* — writers queue on the account, so
 they reach the chain one at a time and never collide. The retry counter proves it:
 **zero conflicts of any kind, at every concurrency level.** Remove the shared
-account and nothing imposes that order, so the same strategy records 1039 chain
-conflicts and loses 67% of its throughput.
+account and nothing imposes that order, so the same strategy records 771 chain
+conflicts and loses 56% of its throughput.
 
 This is why `conflict_kind()` returns a reason. Throughput alone cannot tell you
 *what* the writers were fighting over; the per-kind breakdown can, and it turns a
@@ -719,3 +725,141 @@ shifts a `created_at` by a day, which is hashed but affects no balance. Every
 other reconciliation check still passes and only `hash_chain_intact` fails —
 which is precisely the attack tamper evidence exists to catch, an edit that
 leaves the books adding up.
+
+---
+
+## Phase 5 — Multi-currency and FX
+
+### 5.1 FX needed no new schema, because zero-sum was already per currency
+
+A cross-currency transaction is not a special case. Because the deferred
+constraint trigger has grouped by currency since migration 001, a conversion is
+simply a transaction whose entries balance in two currencies independently:
+
+```
+sell 100.00 USD, spread 1.00 USD, rate 1.35
+
+  user       USD  -10000     USD:  -10000 + 100 + 9900 = 0
+  revenue    USD    + 100
+  liquidity  USD   + 9900
+  liquidity  CAD  -13365     CAD: -13365 + 13365       = 0
+  user       CAD  +13365
+```
+
+Money never crosses the currency boundary. The user's USD goes into a USD pool
+and their CAD comes out of a CAD pool; the two halves are connected only by
+sharing a transaction id. **There is no point in the codebase where a USD amount
+is added to a CAD amount**, which is what makes "no FX sequence can create or
+destroy money in any currency" true by construction rather than by careful
+arithmetic.
+
+Migration 004 contains one statement: adding `liquidity` to the set of account
+types with exactly one instance per currency.
+
+### 5.2 The caller states both legs; the service never applies a rate
+
+`POST /fx/convert` takes `sell_amount_minor` and `buy_amount_minor` as explicit
+integers.
+
+Rejected: taking a rate and computing the other leg.
+
+Reason: this is the most important decision in the module. Applying a rate means
+multiplying money by a non-integer, which means choosing a rounding direction,
+and the rounding residue has to be credited somewhere. Get that wrong and the
+ledger leaks a fraction of a cent per conversion — the classic FX bug, and one
+that reconciliation would only catch after it had happened thousands of times.
+Requiring two integers keeps every arithmetic operation in the money path to
+integer addition, and moves the rounding decision up to the quoting engine where
+the rate actually lives.
+
+The one place a ratio appears is `effective_rate()`, which is display-only,
+computed with `Decimal`, and **returned as a string** so it cannot be fed back
+into an amount calculation by accident. It is also the only function that needs
+`MINOR_UNIT_EXPONENT`: 1 USD is 100 minor units but 1 JPY is 1, so a raw
+minor-unit ratio would misreport a USD/JPY rate by 100×.
+
+### 5.3 Five entries, not four
+
+The specified "four-entry structure" and "the spread accruing to platform
+revenue" cannot both hold. Four entries balance as `USD: −X, +X` and
+`CAD: −Y, +Y`; a spread credited to `platform_revenue` needs its own entry in a
+real currency, giving three legs on one side and five entries in total.
+
+Chosen: five entries, with the spread as an explicit fee denominated in the
+**sell** currency. The four-entry structure is then exactly the `spread = 0`
+case, which `test_zero_spread_conversion_writes_exactly_four_entries` pins.
+
+Rejected: keeping four entries and letting the spread accumulate as the pools
+being long one currency and short the other, realised into revenue later.
+
+Reason for rejecting it: computing that gain requires valuing one currency in
+another, which drags in a mark-to-market rate and a rate oracle, and puts a
+non-integer multiplication back in the money path — undoing 5.2. With an explicit
+fee, no rate is needed to know what the platform earned. It is also the number
+you could show a customer.
+
+The spread going to the *sell* currency's revenue account rather than the buy
+currency's is deliberate and has its own test, because crediting the wrong
+currency's revenue account still balances per currency and would slip past a
+zero-sum-only check.
+
+### 5.4 One liquidity pool per currency, not per pair
+
+The spec asked for liquidity accounts per currency pair. `accounts` has no pair
+column, so honouring that literally meant either adding one or encoding the pair
+in `name` and looking accounts up by string.
+
+Chosen: one pool per currency, resolved by `(type, currency)` exactly as the
+settlement and revenue accounts already are, guaranteed unique by the partial
+index so the lookup cannot silently pick one of several.
+
+Reason: it is what treasury systems actually run, it keeps the account count
+linear in currencies rather than quadratic (5 currencies → 5 accounts, not 40),
+and it needs no schema change. Per-pair pools only buy something if you want to
+account for each pair's P&L separately, which is a reporting concern that can be
+derived from the entries.
+
+A pool going negative is allowed — `liquidity` is one of the types permitted
+below zero — and means the platform is short that currency, which is a real
+funded position.
+
+### 5.5 Pool inventory limits are deliberately not enforced
+
+Nothing stops a conversion from taking a pool arbitrarily negative. That is a
+treasury *policy* decision (how short is the platform willing to be in CAD),
+not a ledger invariant, and encoding it here would mean the ledger refusing a
+transaction for a reason it has no way to evaluate correctly. The ledger's job is
+to record what happened and guarantee it adds up.
+
+What the ledger does guarantee is that the position is always visible: the pool's
+balance is `SUM(entries)` like everything else, so a risk system can read it
+without needing anything this service does not already expose.
+
+### 5.6 The property test uses a model, not just the zero-sum invariant
+
+`test_no_operation_sequence_creates_or_destroys_money` maintains a Python dict of
+what every account's balance *should* be, applies each generated operation to both
+the ledger and the model, and compares all of them at the end.
+
+Rejected: asserting only that the global sum per currency is zero.
+
+Reason: zero-sum is a weak oracle for FX specifically. Crediting the spread to the
+wrong currency's revenue account, or swapping the two liquidity pools, still
+balances per currency and would pass. A per-account model catches those. The test
+also asserts that operations rejected by the service moved *nothing* — the model
+is only advanced when the call succeeded — which is how a partial write would show
+up.
+
+One property in there is worth naming separately: **FX never touches
+`external_settlement`.** Settlement is the door money enters through, so its
+balance should be unchanged by any amount of conversion activity. Asserting that
+directly catches a whole class of "where did this money come from" bug that a
+zero-sum check cannot see.
+
+### 5.7 A same-currency conversion is an error, not a no-op
+
+`POST /fx/convert` with two accounts in the same currency returns 422 pointing at
+`POST /transactions`. It would be easy to let it through as a degenerate
+conversion, but it would route an ordinary transfer through the liquidity pools
+and inflate their turnover with movements that are not FX — making pool volume
+useless as a metric, for no benefit.

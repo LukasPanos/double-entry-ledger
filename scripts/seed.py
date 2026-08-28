@@ -70,6 +70,15 @@ def seed(cur: Cursor) -> dict[str, Any]:
             currency=currency,
             type_="platform_revenue",
         )
+        # One liquidity pool per currency (Phase 5). FX moves the user's money
+        # into the pool for the currency they sold and out of the pool for the
+        # currency they bought; the two never touch each other.
+        created[f"liquidity:{currency}"] = _ensure_account(
+            cur,
+            name=f"Liquidity {currency}",
+            currency=currency,
+            type_="liquidity",
+        )
 
     demo_user = _ensure_account(
         cur, name="Demo User USD", currency="USD", type_="user"

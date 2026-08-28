@@ -15,12 +15,12 @@
       "workload": "hot",
       "concurrency": 1,
       "transactions": 600,
-      "duration_s": 0.5277,
-      "throughput_tps": 1137.0,
-      "p50_ms": 0.83,
-      "p95_ms": 1.09,
-      "p99_ms": 1.43,
-      "max_ms": 5.73,
+      "duration_s": 0.5606,
+      "throughput_tps": 1070.2,
+      "p50_ms": 0.84,
+      "p95_ms": 1.29,
+      "p99_ms": 1.65,
+      "max_ms": 6.91,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -30,12 +30,12 @@
       "workload": "hot",
       "concurrency": 2,
       "transactions": 600,
-      "duration_s": 0.457,
-      "throughput_tps": 1313.0,
-      "p50_ms": 1.49,
-      "p95_ms": 1.78,
-      "p99_ms": 2.17,
-      "max_ms": 3.03,
+      "duration_s": 0.4417,
+      "throughput_tps": 1358.4,
+      "p50_ms": 1.44,
+      "p95_ms": 1.74,
+      "p99_ms": 1.93,
+      "max_ms": 2.32,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -45,12 +45,12 @@
       "workload": "hot",
       "concurrency": 4,
       "transactions": 600,
-      "duration_s": 0.4869,
-      "throughput_tps": 1232.4,
-      "p50_ms": 3.2,
-      "p95_ms": 3.94,
-      "p99_ms": 4.09,
-      "max_ms": 4.71,
+      "duration_s": 0.4366,
+      "throughput_tps": 1374.2,
+      "p50_ms": 2.88,
+      "p95_ms": 3.21,
+      "p99_ms": 3.51,
+      "max_ms": 4.39,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -60,12 +60,12 @@
       "workload": "hot",
       "concurrency": 8,
       "transactions": 600,
-      "duration_s": 0.4398,
-      "throughput_tps": 1364.3,
-      "p50_ms": 5.65,
-      "p95_ms": 6.83,
-      "p99_ms": 10.68,
-      "max_ms": 10.98,
+      "duration_s": 0.4545,
+      "throughput_tps": 1320.0,
+      "p50_ms": 5.85,
+      "p95_ms": 7.0,
+      "p99_ms": 11.02,
+      "max_ms": 11.47,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -75,12 +75,12 @@
       "workload": "hot",
       "concurrency": 16,
       "transactions": 600,
-      "duration_s": 0.4567,
-      "throughput_tps": 1313.9,
-      "p50_ms": 11.88,
-      "p95_ms": 13.46,
-      "p99_ms": 16.26,
-      "max_ms": 19.02,
+      "duration_s": 0.4755,
+      "throughput_tps": 1261.8,
+      "p50_ms": 12.34,
+      "p95_ms": 14.4,
+      "p99_ms": 15.62,
+      "max_ms": 19.1,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -90,12 +90,12 @@
       "workload": "hot",
       "concurrency": 32,
       "transactions": 600,
-      "duration_s": 0.4984,
-      "throughput_tps": 1203.8,
-      "p50_ms": 25.76,
-      "p95_ms": 29.64,
-      "p99_ms": 31.86,
-      "max_ms": 37.13,
+      "duration_s": 0.4993,
+      "throughput_tps": 1201.6,
+      "p50_ms": 25.65,
+      "p95_ms": 31.56,
+      "p99_ms": 33.84,
+      "max_ms": 40.51,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -105,12 +105,12 @@
       "workload": "hot",
       "concurrency": 1,
       "transactions": 600,
-      "duration_s": 0.5022,
-      "throughput_tps": 1194.8,
-      "p50_ms": 0.82,
-      "p95_ms": 0.93,
-      "p99_ms": 1.06,
-      "max_ms": 6.78,
+      "duration_s": 0.527,
+      "throughput_tps": 1138.6,
+      "p50_ms": 0.84,
+      "p95_ms": 1.03,
+      "p99_ms": 1.23,
+      "max_ms": 6.96,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -120,12 +120,12 @@
       "workload": "hot",
       "concurrency": 2,
       "transactions": 600,
-      "duration_s": 0.6163,
-      "throughput_tps": 973.6,
-      "p50_ms": 0.83,
-      "p95_ms": 0.95,
-      "p99_ms": 1.09,
-      "max_ms": 616.26,
+      "duration_s": 0.5353,
+      "throughput_tps": 1120.8,
+      "p50_ms": 0.86,
+      "p95_ms": 1.02,
+      "p99_ms": 1.25,
+      "max_ms": 532.37,
       "retries": {
         "serialization_failure": 11
       },
@@ -137,16 +137,16 @@
       "workload": "hot",
       "concurrency": 4,
       "transactions": 600,
-      "duration_s": 0.612,
-      "throughput_tps": 980.4,
-      "p50_ms": 0.8,
-      "p95_ms": 0.95,
-      "p99_ms": 9.59,
-      "max_ms": 611.95,
+      "duration_s": 0.7127,
+      "throughput_tps": 841.9,
+      "p50_ms": 0.82,
+      "p95_ms": 1.02,
+      "p99_ms": 1.29,
+      "max_ms": 712.59,
       "retries": {
-        "serialization_failure": 53
+        "serialization_failure": 39
       },
-      "retries_total": 53,
+      "retries_total": 39,
       "failures": {}
     },
     {
@@ -154,16 +154,16 @@
       "workload": "hot",
       "concurrency": 8,
       "transactions": 600,
-      "duration_s": 0.7025,
-      "throughput_tps": 854.1,
+      "duration_s": 0.6421,
+      "throughput_tps": 934.4,
       "p50_ms": 0.83,
       "p95_ms": 1.28,
-      "p99_ms": 398.78,
-      "max_ms": 674.5,
+      "p99_ms": 312.51,
+      "max_ms": 642.09,
       "retries": {
-        "serialization_failure": 119
+        "serialization_failure": 114
       },
-      "retries_total": 119,
+      "retries_total": 114,
       "failures": {}
     },
     {
@@ -171,16 +171,16 @@
       "workload": "hot",
       "concurrency": 16,
       "transactions": 600,
-      "duration_s": 0.8135,
-      "throughput_tps": 737.5,
-      "p50_ms": 0.83,
-      "p95_ms": 3.94,
-      "p99_ms": 569.23,
-      "max_ms": 790.32,
+      "duration_s": 0.8361,
+      "throughput_tps": 717.6,
+      "p50_ms": 0.88,
+      "p95_ms": 7.31,
+      "p99_ms": 639.03,
+      "max_ms": 813.39,
       "retries": {
-        "serialization_failure": 217
+        "serialization_failure": 229
       },
-      "retries_total": 217,
+      "retries_total": 229,
       "failures": {}
     },
     {
@@ -188,14 +188,97 @@
       "workload": "hot",
       "concurrency": 32,
       "transactions": 600,
-      "duration_s": 1.1327,
-      "throughput_tps": 529.7,
-      "p50_ms": 0.97,
-      "p95_ms": 351.41,
-      "p99_ms": 877.06,
-      "max_ms": 1132.67,
+      "duration_s": 1.14,
+      "throughput_tps": 526.3,
+      "p50_ms": 0.93,
+      "p95_ms": 399.01,
+      "p99_ms": 934.74,
+      "max_ms": 1001.31,
       "retries": {
-        "serialization_failure": 473
+        "serialization_failure": 489
+      },
+      "retries_total": 489,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 1,
+      "transactions": 600,
+      "duration_s": 0.5231,
+      "throughput_tps": 1147.1,
+      "p50_ms": 0.81,
+      "p95_ms": 1.19,
+      "p99_ms": 1.51,
+      "max_ms": 2.44,
+      "retries": {},
+      "retries_total": 0,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 2,
+      "transactions": 600,
+      "duration_s": 0.6155,
+      "throughput_tps": 974.8,
+      "p50_ms": 0.82,
+      "p95_ms": 1.06,
+      "p99_ms": 2.45,
+      "max_ms": 548.51,
+      "retries": {
+        "chain_conflict": 20
+      },
+      "retries_total": 20,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 4,
+      "transactions": 600,
+      "duration_s": 0.6161,
+      "throughput_tps": 973.8,
+      "p50_ms": 0.8,
+      "p95_ms": 2.28,
+      "p99_ms": 13.71,
+      "max_ms": 499.49,
+      "retries": {
+        "chain_conflict": 90
+      },
+      "retries_total": 90,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 8,
+      "transactions": 600,
+      "duration_s": 0.6771,
+      "throughput_tps": 886.2,
+      "p50_ms": 0.94,
+      "p95_ms": 23.1,
+      "p99_ms": 211.93,
+      "max_ms": 518.11,
+      "retries": {
+        "chain_conflict": 335
+      },
+      "retries_total": 335,
+      "failures": {}
+    },
+    {
+      "strategy": "pessimistic",
+      "workload": "disjoint",
+      "concurrency": 16,
+      "transactions": 600,
+      "duration_s": 0.9227,
+      "throughput_tps": 650.2,
+      "p50_ms": 0.96,
+      "p95_ms": 84.2,
+      "p99_ms": 502.15,
+      "max_ms": 819.36,
+      "retries": {
+        "chain_conflict": 473
       },
       "retries_total": 473,
       "failures": {}
@@ -203,101 +286,18 @@
     {
       "strategy": "pessimistic",
       "workload": "disjoint",
-      "concurrency": 1,
-      "transactions": 600,
-      "duration_s": 0.4784,
-      "throughput_tps": 1254.3,
-      "p50_ms": 0.77,
-      "p95_ms": 0.86,
-      "p99_ms": 1.31,
-      "max_ms": 5.16,
-      "retries": {},
-      "retries_total": 0,
-      "failures": {}
-    },
-    {
-      "strategy": "pessimistic",
-      "workload": "disjoint",
-      "concurrency": 2,
-      "transactions": 600,
-      "duration_s": 0.5977,
-      "throughput_tps": 1003.8,
-      "p50_ms": 0.8,
-      "p95_ms": 1.1,
-      "p99_ms": 11.75,
-      "max_ms": 448.05,
-      "retries": {
-        "chain_conflict": 39
-      },
-      "retries_total": 39,
-      "failures": {}
-    },
-    {
-      "strategy": "pessimistic",
-      "workload": "disjoint",
-      "concurrency": 4,
-      "transactions": 600,
-      "duration_s": 0.7016,
-      "throughput_tps": 855.2,
-      "p50_ms": 0.97,
-      "p95_ms": 8.99,
-      "p99_ms": 64.22,
-      "max_ms": 587.98,
-      "retries": {
-        "chain_conflict": 167
-      },
-      "retries_total": 167,
-      "failures": {}
-    },
-    {
-      "strategy": "pessimistic",
-      "workload": "disjoint",
-      "concurrency": 8,
-      "transactions": 600,
-      "duration_s": 0.7833,
-      "throughput_tps": 766.0,
-      "p50_ms": 1.14,
-      "p95_ms": 31.34,
-      "p99_ms": 197.81,
-      "max_ms": 661.97,
-      "retries": {
-        "chain_conflict": 398
-      },
-      "retries_total": 398,
-      "failures": {}
-    },
-    {
-      "strategy": "pessimistic",
-      "workload": "disjoint",
-      "concurrency": 16,
-      "transactions": 600,
-      "duration_s": 1.0972,
-      "throughput_tps": 546.9,
-      "p50_ms": 1.14,
-      "p95_ms": 89.83,
-      "p99_ms": 678.77,
-      "max_ms": 862.02,
-      "retries": {
-        "chain_conflict": 462
-      },
-      "retries_total": 462,
-      "failures": {}
-    },
-    {
-      "strategy": "pessimistic",
-      "workload": "disjoint",
       "concurrency": 32,
       "transactions": 600,
-      "duration_s": 1.4977,
-      "throughput_tps": 400.6,
-      "p50_ms": 1.64,
-      "p95_ms": 492.31,
-      "p99_ms": 960.13,
-      "max_ms": 1207.96,
+      "duration_s": 1.1351,
+      "throughput_tps": 528.6,
+      "p50_ms": 1.12,
+      "p95_ms": 347.7,
+      "p99_ms": 850.44,
+      "max_ms": 989.26,
       "retries": {
-        "chain_conflict": 1039
+        "chain_conflict": 771
       },
-      "retries_total": 1039,
+      "retries_total": 771,
       "failures": {}
     },
     {
@@ -305,12 +305,12 @@
       "workload": "disjoint",
       "concurrency": 1,
       "transactions": 600,
-      "duration_s": 0.497,
-      "throughput_tps": 1207.1,
-      "p50_ms": 0.82,
-      "p95_ms": 0.93,
-      "p99_ms": 1.32,
-      "max_ms": 1.6,
+      "duration_s": 0.5921,
+      "throughput_tps": 1013.4,
+      "p50_ms": 0.88,
+      "p95_ms": 1.3,
+      "p99_ms": 2.54,
+      "max_ms": 10.39,
       "retries": {},
       "retries_total": 0,
       "failures": {}
@@ -320,16 +320,16 @@
       "workload": "disjoint",
       "concurrency": 2,
       "transactions": 600,
-      "duration_s": 0.5267,
-      "throughput_tps": 1139.1,
-      "p50_ms": 0.81,
-      "p95_ms": 0.95,
-      "p99_ms": 1.14,
-      "max_ms": 175.03,
+      "duration_s": 0.6699,
+      "throughput_tps": 895.7,
+      "p50_ms": 0.87,
+      "p95_ms": 1.26,
+      "p99_ms": 2.72,
+      "max_ms": 434.64,
       "retries": {
-        "serialization_failure": 29
+        "serialization_failure": 16
       },
-      "retries_total": 29,
+      "retries_total": 16,
       "failures": {}
     },
     {
@@ -337,16 +337,16 @@
       "workload": "disjoint",
       "concurrency": 4,
       "transactions": 600,
-      "duration_s": 0.5204,
-      "throughput_tps": 1152.9,
-      "p50_ms": 0.79,
-      "p95_ms": 0.95,
-      "p99_ms": 28.61,
-      "max_ms": 431.15,
+      "duration_s": 0.8205,
+      "throughput_tps": 731.2,
+      "p50_ms": 0.96,
+      "p95_ms": 1.55,
+      "p99_ms": 13.8,
+      "max_ms": 820.46,
       "retries": {
-        "serialization_failure": 58
+        "serialization_failure": 55
       },
-      "retries_total": 58,
+      "retries_total": 55,
       "failures": {}
     },
     {
@@ -354,16 +354,16 @@
       "workload": "disjoint",
       "concurrency": 8,
       "transactions": 600,
-      "duration_s": 0.6808,
-      "throughput_tps": 881.3,
-      "p50_ms": 0.82,
-      "p95_ms": 1.36,
-      "p99_ms": 325.45,
-      "max_ms": 581.04,
+      "duration_s": 0.8954,
+      "throughput_tps": 670.1,
+      "p50_ms": 1.01,
+      "p95_ms": 4.1,
+      "p99_ms": 505.08,
+      "max_ms": 848.59,
       "retries": {
-        "serialization_failure": 137
+        "serialization_failure": 110
       },
-      "retries_total": 137,
+      "retries_total": 110,
       "failures": {}
     },
     {
@@ -371,16 +371,16 @@
       "workload": "disjoint",
       "concurrency": 16,
       "transactions": 600,
-      "duration_s": 0.7483,
-      "throughput_tps": 801.8,
-      "p50_ms": 0.86,
-      "p95_ms": 1.6,
-      "p99_ms": 667.83,
-      "max_ms": 747.76,
+      "duration_s": 0.7841,
+      "throughput_tps": 765.2,
+      "p50_ms": 0.95,
+      "p95_ms": 8.27,
+      "p99_ms": 671.74,
+      "max_ms": 784.03,
       "retries": {
-        "serialization_failure": 181
+        "serialization_failure": 230
       },
-      "retries_total": 181,
+      "retries_total": 230,
       "failures": {}
     },
     {
@@ -388,16 +388,16 @@
       "workload": "disjoint",
       "concurrency": 32,
       "transactions": 600,
-      "duration_s": 1.1001,
-      "throughput_tps": 545.4,
-      "p50_ms": 0.86,
-      "p95_ms": 389.68,
-      "p99_ms": 782.05,
-      "max_ms": 877.84,
+      "duration_s": 1.2162,
+      "throughput_tps": 493.4,
+      "p50_ms": 1.12,
+      "p95_ms": 419.8,
+      "p99_ms": 951.61,
+      "max_ms": 1215.3,
       "retries": {
-        "serialization_failure": 453
+        "serialization_failure": 571
       },
-      "retries_total": 453,
+      "retries_total": 571,
       "failures": {}
     }
   ]

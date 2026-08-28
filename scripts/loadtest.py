@@ -149,9 +149,14 @@ def _build_fixture(workers: int, transactions: int) -> Fixture:
                 CreateAccountRequest(name=f"merchant {i}", currency="USD", type="user")
             )["id"]
         )
+        # `user` rather than `liquidity`: since Phase 5 there is exactly one
+        # liquidity account per currency, and this workload needs one per worker.
+        # The type is immaterial to the measurement -- this leg is only ever
+        # credited, so the overdraft check skips it either way, exactly as it
+        # does for the platform_revenue account in the hot workload.
         cold.append(
             create_account(
-                CreateAccountRequest(name=f"cold {i}", currency="USD", type="liquidity")
+                CreateAccountRequest(name=f"cold {i}", currency="USD", type="user")
             )["id"]
         )
 
