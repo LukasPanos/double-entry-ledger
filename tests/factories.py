@@ -69,9 +69,17 @@ def liquidity_account(currency: str = "USD") -> UUID:
     )
 
 
-def fx_world(currencies: tuple[str, ...] = ("USD", "CAD")) -> dict[str, Any]:
+def fx_world(
+    currencies: tuple[str, ...] = ("USD", "CAD"),
+    *,
+    user_funding: int = 1_000_000,
+    pool_funding: int = 10_000_000,
+) -> dict[str, Any]:
     """A minimal multi-currency setup: system accounts for each currency, plus
-    one user account per currency, funded."""
+    one user account per currency, funded.
+
+    `user_funding` is adjustable so property tests can starve the accounts and
+    actually reach the overdraft path."""
     world: dict[str, Any] = {"user": {}, "liquidity": {}, "revenue": {}, "settlement": {}}
     for currency in currencies:
         world["settlement"][currency] = settlement_account(currency)
@@ -82,8 +90,8 @@ def fx_world(currencies: tuple[str, ...] = ("USD", "CAD")) -> dict[str, Any]:
         )
         # The pools need inventory to sell out of, funded from settlement the
         # same way a user is: money enters the system through one door only.
-        fund(world["liquidity"][currency], 10_000_000, currency)
-        fund(world["user"][currency], 1_000_000, currency)
+        fund(world["liquidity"][currency], pool_funding, currency)
+        fund(world["user"][currency], user_funding, currency)
     return world
 
 

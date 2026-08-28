@@ -1014,3 +1014,139 @@ history. Marking them delivered is not strictly true, which is exactly why the
 payload says `backfilled` — so nobody later mistakes them for events that were
 genuinely sent. Without the backfill, the new reconciliation check would flag
 every historical transaction forever.
+
+### 6.9 A 4xx is a permanent failure, found by the chaos run
+
+Originally every non-2xx response was retried until the attempt budget ran out.
+The chaos run surfaced why that is wrong: a misconfigured webhook secret produced
+a 401 on every attempt, so each event burned all 30 retries and logged an error
+each time — thousands of log lines describing one configuration mistake, and a
+backlog that took the full backoff schedule to clear.
+
+`deliver()` now raises `PermanentDeliveryFailure` for a 4xx that is not 408, 425
+or 429, and those dead-letter on the first attempt. Retrying identical bytes
+against an endpoint that rejected them cannot succeed; the only thing retrying
+buys is noise and delay.
+
+---
+
+## Phase 7 — Tamper evidence and chaos
+
+The hash chain and `/integrity` landed in Phases 1 and 4 (see 1.7, 1.8, 4.10).
+This phase is the chaos runner and the stateful properties.
+
+### 7.1 SIGKILL, not SIGTERM, for most kills
+
+80% of kills are `SIGKILL`, sent to the server's process group.
+
+Reason: `SIGTERM` lets uvicorn drain in-flight requests, which tests the graceful
+path — worth covering, and it gets the other 20%. `SIGKILL` severs the process
+mid-statement with no opportunity to flush, close, or roll back, and Postgres then
+discards whatever those connections were doing. Uncommitted work vanishing is the
+assumption every invariant in this service rests on, so that is the case worth
+hammering.
+
+The server runs in its own process group (`start_new_session=True`) so a kill
+cannot reach the driver.
+
+### 7.2 Invariants are checked while the server is down
+
+The killer kills, then runs the full reconciliation suite and the chain walk
+*before* restarting.
+
+Reason: with the server dead there are no in-flight transactions, so the snapshot
+is unambiguous. Checking while traffic is flowing would mean reasoning about
+whether a transient inconsistency was a real violation or a half-finished write —
+and reconciliation already runs at REPEATABLE READ specifically so it never has to
+(4.7). This just removes the question entirely at the moment it matters most.
+
+The run **aborts on the first violation** rather than collecting them, because the
+first one is the diagnosable one; everything after it is downstream noise.
+
+### 7.3 The concurrency strategy is re-rolled on every restart
+
+Each restart picks `pessimistic` or `optimistic` at random, so a single run
+exercises both Phase 4 code paths against the same accumulating data, including
+crossings where a transaction written under one strategy is read under the other.
+
+### 7.4 The replay verification is the part reconciliation cannot do
+
+Reconciliation proves the ledger is *internally consistent*. It has no idea what
+any client was told. So the chaos driver records every request with its
+client-observed outcome, and at the end replays every idempotency key with a
+byte-identical body, asserting:
+
+* a request the client saw succeed has exactly one transaction, whose entries are
+  **exactly** the ones requested — this is what catches a partial write;
+* a request the client saw *rejected* has no transaction at all;
+* a request whose outcome the client never learned (the server died mid-request)
+  has either all of its entries or none;
+* replaying creates no second transaction for a key that already had one, and the
+  total transaction count rises by exactly the number of keys reported as newly
+  processed.
+
+That last one is the tightest: it means every key is accounted for. A key that was
+uncertain either committed before the crash (and now replays) or did not (and now
+processes) — never both, never neither.
+
+### 7.5 Chaos results
+
+`python -m scripts.chaos --duration 120 --workers 8 --seed 20260827`:
+
+| | |
+|---|---|
+| operations sent | 30,179 |
+| confirmed | 26,688 |
+| rejected (4xx) | 1,880 |
+| **outcome unknown** (killed mid-request) | **1,611** |
+| replays sent | 6,047 |
+| transactions committed | 21,681 |
+| server kills | 15 (12 SIGKILL, 3 SIGTERM) |
+| full invariant checks | 18 |
+| **violations** | **0** |
+| replay verification | 19,877 replayed, 995 newly processed, **0 duplicated** |
+| outbox | 32,505 events, 38,195 requests, 5,690 duplicates, **0 lost, 0 dead** |
+
+The 1,611 unknown-outcome requests are the ones that matter — those are clients
+that were killed mid-request and genuinely could not know whether their write
+landed. Every one was resolved to exactly one outcome by the replay pass.
+
+The outbox line is Phase 6 and Phase 7 combined: the relay lives in the server, so
+each kill severed deliveries in flight. Those events came back through the lease
+mechanism (6.2), were redelivered, and the receiver's dedup absorbed all 5,690
+duplicates. Nothing was lost and nothing dead-lettered.
+
+`tests/test_phase7_chaos.py` runs the same harness for 14 seconds inside the test
+suite, so a regression in the chaos code itself gets caught by `make test` rather
+than waiting for someone to run it by hand. It asserts the harness *did work*
+(kills landed, requests were cut off mid-flight, every operation type ran) so a
+broken harness cannot pass by doing nothing.
+
+### 7.6 The properties are a state machine, not a list of random operations
+
+`RuleBasedStateMachine` with bundles for holds and replayable keys.
+
+Reason: Hypothesis chooses each step knowing the state it has already built, so it
+learns to capture the holds it just created and to replay the keys it just used. A
+flat list of random operations mostly generates requests that get rejected for
+referencing nothing. It also shrinks a failure to the shortest reproducing
+sequence, which is the difference between a bug report and a puzzle.
+
+Two things went wrong while writing it, both worth recording:
+
+**Bundle pollution.** Rules originally returned `None` when an operation was
+rejected, which puts `None` *into* the bundle — so downstream rules spent steps on
+values they had to skip. Hypothesis reported 5 outright invalid examples and 92%
+retried draws. Returning `multiple()` (which adds nothing) plus two `@initialize`
+rules to seed both bundles took it to **0 invalid examples**.
+
+**The suite was not reaching the boundary it claimed to test.** Accounts were
+funded with 500,000 while amounts drew up to 20,000, so over ~25 steps they never
+ran out of money. I checked this by mutation: deleting the body of
+`assert_no_overdraft` entirely, and the suite still passed. Funding is now 25,000,
+and the same mutation fails immediately with
+`AssertionError: account ... actual -1`, shrunk to a minimal example.
+
+That second one is the more useful lesson: a green property test proves nothing
+about a code path the generator never reaches. The mutation check is cheap and
+should be the default way of confirming a property test has teeth.

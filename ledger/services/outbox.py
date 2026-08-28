@@ -176,21 +176,25 @@ def mark_delivered(event_id: int) -> None:
         )
 
 
+def mark_dead(event_id: int, attempts: int, reason: str) -> None:
+    with transaction() as cur:
+        cur.execute(
+            "UPDATE outbox SET status = 'dead' WHERE id = %s AND status = 'pending'",
+            (event_id,),
+        )
+    log.error(
+        "outbox event %s dead-lettered after %s attempt(s): %s",
+        event_id,
+        attempts,
+        reason,
+    )
+
+
 def mark_failed(event_id: int, attempts: int, reason: str) -> str:
     """Schedule a retry, or dead-letter the event. Returns the new status."""
     settings = get_settings()
     if attempts >= settings.outbox_max_attempts:
-        with transaction() as cur:
-            cur.execute(
-                "UPDATE outbox SET status = 'dead' WHERE id = %s AND status = 'pending'",
-                (event_id,),
-            )
-        log.error(
-            "outbox event %s dead-lettered after %s attempts: %s",
-            event_id,
-            attempts,
-            reason,
-        )
+        mark_dead(event_id, attempts, reason)
         return "dead"
 
     delay = backoff_seconds(attempts)
@@ -213,8 +217,29 @@ def mark_failed(event_id: int, attempts: int, reason: str) -> str:
     return "pending"
 
 
+class PermanentDeliveryFailure(Exception):
+    """The endpoint rejected the event in a way retrying cannot fix."""
+
+
+# 4xx codes that *are* worth retrying. Everything else in the 4xx range means the
+# request itself is unacceptable -- a bad signature, a wrong path, a payload the
+# consumer refuses -- and sending it again unchanged will get the same answer.
+RETRYABLE_CLIENT_STATUS = frozenset({408, 425, 429})
+
+
 def deliver(client: httpx.Client, url: str, row: dict[str, Any]) -> None:
-    """POST one event. Raises on any non-2xx or transport error."""
+    """POST one event.
+
+    Raises `PermanentDeliveryFailure` for a client error that retrying cannot
+    fix, and any other exception for something worth retrying.
+
+    The distinction matters operationally. Before it existed, a misconfigured
+    webhook secret meant every event burned the full retry budget on 401s and
+    logged an error each time -- thousands of log lines describing one
+    configuration mistake, and a backlog that took the whole backoff schedule to
+    clear. Now a permanent rejection dead-letters on the first attempt, which is
+    both cheaper and a much clearer signal.
+    """
     settings = get_settings()
     body = _serialise(envelope(row))
     headers = {
@@ -231,7 +256,16 @@ def deliver(client: httpx.Client, url: str, row: dict[str, Any]) -> None:
         headers["X-Signature"] = sign(body, settings.webhook_secret)
 
     response = client.post(url, content=body, headers=headers)
-    response.raise_for_status()
+    if response.is_success:
+        return
+    if (
+        response.status_code >= 500
+        or response.status_code in RETRYABLE_CLIENT_STATUS
+    ):
+        response.raise_for_status()
+    raise PermanentDeliveryFailure(
+        f"HTTP {response.status_code} {response.reason_phrase}"
+    )
 
 
 def _serialise(payload: dict[str, Any]) -> bytes:
@@ -260,6 +294,12 @@ def relay_once(url: str | None = None) -> RelayStats:
         for row in rows:
             try:
                 deliver(client, url, row)
+            except PermanentDeliveryFailure as exc:
+                # No retry budget spent: sending the same bytes again would get
+                # the same rejection.
+                stats.errors.append(str(exc))
+                mark_dead(row["id"], row["attempts"], str(exc))
+                stats.dead += 1
             except Exception as exc:  # noqa: BLE001 -- every failure is a retry
                 # First line only: httpx's status errors carry a multi-line
                 # message with a documentation link, which makes relay logs
