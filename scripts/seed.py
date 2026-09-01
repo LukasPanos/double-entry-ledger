@@ -40,13 +40,46 @@ def stable_id(name: str) -> uuid.UUID:
     return uuid.uuid5(NAMESPACE, name)
 
 
+# Account types of which there is exactly one per currency, enforced by the
+# partial unique index in migrations 001/004.
+SINGLETON_TYPES = frozenset(
+    {"external_settlement", "platform_revenue", "liquidity"}
+)
+
+
 def _ensure_account(
     cur: Cursor, *, name: str, currency: str, type_: str
 ) -> uuid.UUID:
+    """Create the account if it is not already there, and return its id.
+
+    For the singleton types, the existence check is on `(type, currency)` -- the
+    key the database actually constrains -- not on this script's derived id.
+    Those disagree whenever the accounts were created by something other than
+    this script: a chaos run, a load test, or a colleague using the API. Checking
+    the derived id in that situation finds nothing, tries to insert, and dies on
+    `accounts_one_system_account_per_currency`.
+
+    That is exactly what happened the first time `make seed` was run against a
+    database that had already been used, so the check now matches the constraint.
+    """
+    if type_ in SINGLETON_TYPES:
+        cur.execute(
+            """
+            SELECT id FROM accounts
+             WHERE type = %s::account_type AND currency = %s
+            """,
+            (type_, currency),
+        )
+        existing = cur.fetchone()
+        if existing is not None:
+            logging.info("reusing %-20s %s %s", type_, currency, existing["id"])
+            return existing["id"]
+
     account_id = stable_id(f"account:{type_}:{currency}:{name}")
     cur.execute("SELECT 1 FROM accounts WHERE id = %s", (account_id,))
     if cur.fetchone() is not None:
         return account_id
+
     _insert_account(
         cur, account_id=account_id, name=name, currency=currency, type_=type_
     )
